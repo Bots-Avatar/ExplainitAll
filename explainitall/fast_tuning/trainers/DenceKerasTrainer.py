@@ -1,50 +1,64 @@
+from tensorflow import keras as K
+from keras.models import Sequential
+from keras.layers import Dense
+import keras.layers as L
+import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
 
-class GPTFastTrainer(nn.Module):
+# Создание обучаемого последнего слоя
+class GPTFastTrainer():
+
     def __init__(self, gpt_model):
-        super(GPTFastTrainer, self).__init__()
         self.inp_dim = gpt_model.config.n_embd
         self.outp_dim = gpt_model.config.vocab_size
 
-        # Адаптирующий слой
-        self.adapter_layer = nn.Linear(self.inp_dim, self.inp_dim, bias=False)
+        if torch.cuda.is_available():
+            gpt_model.to('cpu')
 
-        # Выходной слой
-        self.out_layer = nn.Linear(self.inp_dim, self.outp_dim, bias=True)
-        self.out_layer.weight.requires_grad = False  # Замораживание весов выходного слоя
+        self.keras_out_weight = gpt_model.lm_head.weight.detach().numpy().transpose()  # Получение весовых коэффициентов
+        self.keras_adapter_weight = np.eye(self.inp_dim, dtype=np.float)  # Единичная матрица (коэф. адаптирующего слоя)
 
-        # Инициализация весов
-        with torch.no_grad():
-            self.out_layer.weight.copy_(gpt_model.lm_head.weight.detach().transpose(0, 1))
-            self.adapter_layer.weight.fill_(1)  # Единичная матрица
+        self.adapter_layer = Dense(self.inp_dim, use_bias=False, activation='linear')  # Адаптирующий слой
+        self.out_layer = Dense(use_bias=True, units=self.outp_dim, activation='linear',
+                               trainable=False)  # Выходной слой (необучается)
 
-    def forward(self, x):
-        x = self.adapter_layer(x)
-        x = self.out_layer(x)
-        return torch.softmax(x, dim=-1)
+        if torch.cuda.is_available():
+            gpt_model.to('cuda:0')
 
-    def train_model(self, net, x, y, lr=0.0003, bs=64, epochs=3, val_split=0.0):
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adamax(net.parameters(), lr=lr)
+    #############################
+    # Создание сети для тюнинга #
+    #############################
+    def creat_net(self):
+        net = Sequential()
+        net.add(L.Input((self.inp_dim)))
+        net.add(self.adapter_layer)
+        net.add(self.out_layer)
+        net.add(L.Activation(activation='softmax'))
+        net.compile()
+        self.out_layer.set_weights([self.keras_out_weight, np.zeros((self.outp_dim))])  # Загрузка весов в выходной слой
+        self.adapter_layer.set_weights([self.keras_adapter_weight])  # Загрузка весов в слой адаптера
+        return net
 
-        # Разделение данных на обучающую и валидационную выборки
-        split_idx = int(len(x) * (1 - val_split))
-        train_x, val_x = x[:split_idx], x[split_idx:]
-        train_y, val_y = y[:split_idx], y[split_idx:]
+    ##########################################################
+    # Пересоздание слоя с установкой вариативности генерации #
+    ##########################################################
+    def set_variety_of_answers(self, y, variety=0, min_prob=1e-300):
+        set_tokens = set(y)
+        bias = np.zeros((self.outp_dim))
+        coef_mask = np.log2(variety + min_prob) / np.log2(np.e)
+        bias += coef_mask
 
-        for epoch in range(epochs):
-            optimizer.zero_grad()
-            outputs = net(train_x)
-            loss = criterion(outputs, train_y)
-            loss.backward()
-            optimizer.step()
+        for token in set_tokens:
+            bias[token] = 0
 
-            if val_split > 0:
-                val_outputs = net(val_x)
-                val_loss = criterion(val_outputs, val_y)
-                print(f"Epoch {epoch + 1}, Loss: {loss.item()}, Val Loss: {val_loss.item()}")
-            else:
-                print(f"Epoch {epoch + 1}, Loss: {loss.item()}")
+        self.out_layer.set_weights([self.keras_out_weight, bias])
+
+    #################
+    # Обучение сети #
+    #################
+    def train(self, net, x, y, lr=0.0003, bs=64, epochs=3, val_split=0.0):
+        self.set_variety_of_answers(y)
+        opt = K.optimizers.Adamax(learning_rate=lr)  # Оптимизатор
+        net.compile(loss='sparse_categorical_crossentropy', optimizer=opt)
+        net.fit(x, y, batch_size=bs, epochs=epochs, validation_split=val_split)
