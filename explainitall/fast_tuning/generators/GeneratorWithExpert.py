@@ -59,7 +59,7 @@ class GPTGenerator:
               inputs = {'input_ids': generated[:, -1023:]} # Входы
               outputs = self.model_gpt(**inputs) # Прямой проход gpt
 
-              g_with_start = list(generated[0][inp_len:].cpu().numpy())# Затравка для эксперта
+              g_with_start = list(generated[0].cpu().numpy())# Затравка для эксперта
               bias_expert = self.expert.get_bias(g_with_start) # bias на базе эксперта или их смеси
               bias_expert = torch.tensor(bias_expert).to(self.infer_device) # bias в виде тензора
               next_token_logits = ((1-expert_w)*outputs[0][0, -1, :]+expert_w*bias_expert) / temperature
