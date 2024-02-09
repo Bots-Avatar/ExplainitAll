@@ -7,7 +7,7 @@ import torch
 
 
 # Создание обучаемого последнего слоя
-class GPTFastTrainer():
+class GPTFastTrainer:
 
     def __init__(self, gpt_model):
         self.inp_dim = gpt_model.config.n_embd
