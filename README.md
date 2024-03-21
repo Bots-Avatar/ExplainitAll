@@ -37,4 +37,6 @@
   * Видеопамять 16 GB
 
 
+
+## Лицензия
 * Лицензия [Apache-2.0 license](https://github.com/Bots-Avatar/ExplainitAll/tree/main#Apache-2.0-1-ov-file)
