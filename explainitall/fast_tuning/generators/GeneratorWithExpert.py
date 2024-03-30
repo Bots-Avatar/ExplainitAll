@@ -10,15 +10,14 @@ class GPTGenerator:
     self.model_gpt.to(device)
     self.tokenizer_gpt = tokenizer
     self.expert = expert
+    self.model_gpt.eval()
 
   # Штраф за повтор
-  def __repeat_penalty(self, generated, logist, rp):
-    hist_tokens = list(generated[0].cpu().numpy())
-    set_tokens = set(hist_tokens)
-    for token, log in enumerate(logist):
-      if token in set_tokens:
-        logist[token] = log-rp*(hist_tokens.count(token))
-
+  def __repeat_penalty(self, generated, logits, rp):
+    hist_tokens = generated[0].cpu().numpy()
+    unique_tokens, counts = np.unique(hist_tokens, return_counts=True)
+    for token, count in zip(unique_tokens, counts):
+      logits[token] -= rp * count
 
   #top p, top k фильтрация
   def _get_token(self, logist, top_k = 30, top_p = 0.9, del_simbols = None):
@@ -100,4 +99,41 @@ class GPTGenerator:
           )
     return ret
 
-##################################################################################################################################################################
+# Генерация с использованием Bias
+class GenerationWithProbs:
+
+  def __init__(self, model, tokenizer, bias_mask, device = 'cpu'):
+    self.model = model
+    self.b_mask = bias_mask
+    self.tokenizer = tokenizer
+    self.model.to(device)
+
+  def generate(self, text, top_p = 0.9, max_len = 30, rp = 1.15, temperature=0.7, variety = 0.3):
+    self.__set_variety(variety)
+    do_sample = temperature > 0
+
+    input_ids = self.tokenizer.encode(text, return_tensors='pt').to(self.model.device)
+    output_sequences = self.model.generate(input_ids=input_ids,
+                                           max_length=max_len,
+                                           temperature= None if temperature == 0 else temperature,
+                                           top_p= None if temperature == 0 else top_p,
+                                           repetition_penalty=rp,
+                                           num_return_sequences=1,
+                                           do_sample=do_sample)
+
+    generated_text = self.tokenizer.decode(output_sequences[0], skip_special_tokens=True)
+    return generated_text
+
+  def __set_variety(self, variety=0.0):
+    bias = np.zeros((self.model.lm_head.out_features,))
+    coef_mask = np.log2(variety + 3e-3) / np.log2(np.e)
+    bias += coef_mask
+
+    for token in self.b_mask:
+        bias[token] = 0
+
+    b_tensor = torch.tensor(bias, dtype=torch.float32)
+    out_gpt_layer = torch.nn.Linear(in_features=self.model.lm_head.in_features, out_features=self.model.lm_head.out_features, bias=True)
+    out_gpt_layer.weight = self.model.lm_head.weight
+    out_gpt_layer.bias.data.copy_(b_tensor)
+    self.model.lm_head = out_gpt_layer
