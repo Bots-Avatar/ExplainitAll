@@ -1,7 +1,7 @@
 gensim==4.3
 gradio==4.4.1
 gradio_client==0.7.0
-inseq==0.4.0
+inseq>=0.4.0
 matplotlib==3.5
 nltk==3.8.1
 pandas==2.2.1
