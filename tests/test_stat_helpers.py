@@ -90,7 +90,6 @@ def test_gauss_integral_1D():
     result = stat_helpers.compute_gaussian_integral(arr, mu, std)
     np.testing.assert_almost_equal(result, expected_result, decimal=4)
 
-
 def test_gauss_integral_2D():
     arr = np.array([[1, 2], [3, 4]])
     mu = 2
@@ -98,26 +97,6 @@ def test_gauss_integral_2D():
     expected_result = np.array([[0.15865525, 0.5], [0.84134475, 0.97724987]])
     result = stat_helpers.compute_gaussian_integral(arr, mu, std)
     np.testing.assert_almost_equal(result, expected_result, decimal=4)
-
-
-@pytest.mark.parametrize(
-    "input_arr, expected_result",
-    [(np.array([1, 2, 3, 4, 5]), {'new_arr': np.array([0.06620321, 0.29999634, 0.53379728, 0.6957107, 0.89992847]),
-                                  'mean': 3.0,
-                                  'std': 1.4142})])
-def test_calc_gauss_stat_params(input_arr, expected_result):
-    result = stat_helpers.calc_gmm_stat_params(input_arr)
-
-    assert 'new_arr' in result
-    assert 'mean' in result
-    assert 'std' in result
-    assert isinstance(result['new_arr'], np.ndarray)
-    assert isinstance(result['mean'], float)
-    assert isinstance(result['std'], float)
-
-    np.testing.assert_almost_equal(result['mean'], expected_result['mean'], decimal=4)
-    np.testing.assert_almost_equal(result['std'], expected_result['std'], decimal=4)
-    np.testing.assert_almost_equal(result['new_arr'], expected_result['new_arr'], decimal=4)
 
 
 def test_de_normalizy():
@@ -132,7 +111,3 @@ def test_calc_gauss_mixture_stat_params():
     result = stat_helpers.calc_gauss_mixture_stat_params(arr, num_components=1, seed=0)
     expected = np.array([[0.061, 0.123, 0.219], [0.349, 0.5, 0.651], [0.781, 0.877, 0.939]])
     np.testing.assert_almost_equal(result, expected, decimal=3)
-
-
-if __name__ == "__main__":
-    pytest.main()

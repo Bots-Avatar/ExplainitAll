@@ -1,13 +1,14 @@
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPT2Model, GPT2Config
-import torch
 import numpy as np
+import torch
+from transformers import GPT2Model, GPT2Config
 
 
-# Эмбеддер для gpt
-class GPTEmbedder():
+class GPTEmbedder:
+    """Эмбеддер для gpt"""
+
     def __init__(self, tokenizer_gpt, gpt, device=None):
 
-        if device == None:
+        if device is None:
             device = 'cpu'
             if torch.cuda.is_available():
                 device = 'cuda:0'
@@ -17,9 +18,12 @@ class GPTEmbedder():
         self.tokenizer = tokenizer_gpt
         self.device = device
 
-    # Данные(эмбеддинги) со скрытых слоев
+    #
     def get_emb_from_gpt(self, inp_str, n_layer_index=-1, token=-1, is_attention=False):
-        # Вернуть скрытое состояние или данные внимания
+        """
+        Данные(эмбеддинги) со скрытых слоев
+        Вернуть скрытое состояние или данные внимания
+        """
         att_hidden = 0
         if is_attention:
             att_hidden = 1
@@ -32,20 +36,20 @@ class GPTEmbedder():
         with torch.no_grad():
             outputs = self.model(**inputs)
 
-        return_obj = None
-
         if n_layer_index == 'all':
-            return outputs.last_hidden_state[0, -1, :].reshape((self.model.config.n_embd)).to('cpu').detach().numpy()
+            return outputs.last_hidden_state[0, -1, :].reshape(self.model.config.n_embd).to('cpu').detach().numpy()
         else:
             return_obj = outputs[1][n_layer_index][att_hidden][0, :, token, :].to('cpu')  # 0 - т.к. батч ожидается 1
 
         shape = return_obj.shape
         return return_obj.reshape((shape[0] * shape[1])).detach().numpy()
 
-    # Данные(эмбеддинги) со скрытых слоев(По всем токенам)
     def get_embs_from_gpt(self, inp_str, n_layer_index=-1, head_index=0, is_attention=False):
+        """
+        Данные(эмбеддинги) со скрытых слоев(По всем токенам)
+        Вернуть скрытое состояние или данные внимания
+        """
 
-        # Вернуть скрытое состояние или данные внимания
         att_hidden = 0
         if is_attention:
             att_hidden = 1
@@ -57,8 +61,6 @@ class GPTEmbedder():
 
         with torch.no_grad():
             outputs = self.model(**inputs)
-
-        return_obj = None
 
         # Пройти всю сеть включая слой нормализации
         if n_layer_index == 'all':
@@ -78,8 +80,8 @@ class GPTEmbedder():
 
         return return_obj
 
-    # Создание модели на базе первых слоев gpt2 донора
     def _get_k_layer(self, num_layers=3, name='gpt-embeder'):
+        """Создание модели на базе первых слоев gpt2 донора"""
         base_model = self.model.base_model  # модель-донор
         config_base = base_model.config  # Конфиг модели-донора
         config = GPT2Config.from_dict(config_base.to_dict())  # Копирование конфига
@@ -100,8 +102,8 @@ class GPTEmbedder():
 
         return gpt_emb
 
-    # Создание модели на базе первых слоев gpt2 донора с перезаписью
     def get_new_model(self, num_layers=3, name='gpt-embeder', save_path='gpt/model_emb'):
+        """Создание модели на базе первых слоев gpt2 донора с перезаписью"""
         m = self._get_k_layer(num_layers, name)
         m.save_pretrained(save_path)
         return GPT2Model.from_pretrained(save_path)

@@ -1,7 +1,22 @@
-import sqlalchemy
+from sqlalchemy import create_engine, Table, Column, Float, Integer, String, MetaData
 
-from models import data_table
 
-engine = sqlalchemy.create_engine('sqlite:///database.sqlite', echo=True)
+ENGINE = create_engine('sqlite:///database.sqlite', echo=True)
 
-data_table.create(engine)
+
+metadata = MetaData()
+
+
+data_table = Table('data', metadata,
+                   Column('id', Integer, primary_key=True, autoincrement=True),
+                   Column('model_name', String),
+                   Column('timestamp', Integer),
+                   Column('dataset_name', String),
+                   Column('dataset_version', Integer),
+                   Column('PPL', Float),
+                   Column('R3', Float),
+                   Column('R5', Float),
+                   Column('R-L', Float))
+
+
+metadata.create_all(ENGINE)

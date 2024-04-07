@@ -49,7 +49,3 @@ def test_calculate_mask():
     grouped_data = [[1, 2, 3], [11, 22], [333]]
     expected_output = [[0, 3], [3, 5], [5, 6]]
     assert inseq_helpers.calculate_mask(grouped_data) == expected_output
-
-
-if __name__ == "__main__":
-    pytest.main()

@@ -1,9 +1,10 @@
-from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPT2Model
-from .Embedder import GPTEmbedder
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from .trainers.DenseKerasTrainer import GPTFastTrainer
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, GPT2Model
+
+from .Embedder import GPTEmbedder
+from .trainers.DenceKerasTrainer import GPTFastTrainer
 
 
 def get_dataset_dense(txts, embedder: GPTEmbedder, tokenizer: GPT2Tokenizer, n_layer_index='all'):

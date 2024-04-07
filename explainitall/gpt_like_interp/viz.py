@@ -44,13 +44,15 @@ def show_distribution_plot(array: np.ndarray):
     plt.show()
 
 
-def df_to_heatmap(df, title=None):
+def df_to_heatmap(df, title=None, annot=True):
     df_temp = copy.deepcopy(df)
     df_temp.set_index('Tokens', inplace=True)
 
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(df_temp, annot=True, cmap='coolwarm', linewidths=0.5, linecolor='lightgrey')
+    plt.figure(figsize=(15, 10))
+    sns.heatmap(df_temp, annot=annot, cmap='coolwarm', linewidths=0.5, linecolor='lightgrey')
     if title:
-        plt.title(title)
-    plt.yticks(rotation=45, va='top')
+        plt.title(title, fontsize=14)
+    plt.yticks(rotation=45, va='top', fontsize=10)
+    plt.xticks(rotation=45, fontsize=10)
+    plt.tight_layout()
     plt.show()

@@ -61,7 +61,6 @@ def calc_gauss_mixture_stat_params(array: np.ndarray,
                                    num_components: int = 3,
                                    seed: Optional[int] = None) -> np.ndarray:
     "Рассчет нового массива на базе гауссовой смеси"
-    # h,w = array.shape
     d_array_2d = denormalize_array(array)
 
     d_array_1d = d_array_2d[~np.isnan(array)]
@@ -77,8 +76,6 @@ def calc_gmm_stat_params(array: np.ndarray) -> Dict:
 
     mean = float(np.mean(array_1d))
     std = float(np.std(array_1d))
-    # new_arr_1 = compute_gaussian_integral(array, mean, std)
-    # new_arr_2 = old_calc_gauss_mixture_stat_params(array)
     new_arr = calc_gauss_mixture_stat_params(array)
 
     return {'new_arr': new_arr, "mean": mean, "std": std}

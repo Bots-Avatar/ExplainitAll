@@ -1,39 +1,56 @@
+import copy
+import json
 import os
 import re
-import math
-import json
-import copy
-import pandas as pd
-import itertools
-import gradio as gr
-
-import io
-from PIL import Image
-
 import tempfile
 
 import gensim
+import gradio as gr
+import pandas as pd
 from inseq import load_model
-
-from explainitall.gpt_like_interp import viz
-from explainitall.gpt_like_interp import dl
-from explainitall.gpt_like_interp import interp
-
-from explainitall.QA.interp_qa.KNNWithGenerative import FredStruct, PromptBot
-from explainitall.QA.extractive_qa_sbert.SVDBert import SVDBertModel
-from explainitall.QA.extractive_qa_sbert.QABotsBase import cos_dist
-from sklearn.neighbors import KNeighborsClassifier
 from sentence_transformers import SentenceTransformer
-import gensim
-from inseq import load_model
-from explainitall.gpt_like_interp import viz
-from explainitall.gpt_like_interp import dl
+from sklearn.neighbors import KNeighborsClassifier
+
+from explainitall.QA.extractive_qa_sbert.QABotsBase import cos_dist
+from explainitall.QA.extractive_qa_sbert.SVDBert import SVDBertModel
+from explainitall.QA.interp_qa.KNNWithGenerative import FredStruct, PromptBot
 from explainitall.gpt_like_interp import interp
+from explainitall.gpt_like_interp.downloader import DownloadManager
+from explainitall.gui.df_to_heatmap_plot import df_to_heatmap_plot
 
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-from .supporting_functions import df_to_heatmap_plot, make_dataframe_from_clusters, make_clusters_from_dataframe
+def set_verbosity_error():
+    import os
+    import warnings
+    import transformers
+    import logging
+    warnings.filterwarnings("ignore", category=Warning, message=".*deprecated.*")
+    warnings.filterwarnings("ignore", category=Warning, message=".*will be removed.*")
+    transformers.logging.set_verbosity_error()
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    logger = logging.getLogger('torch')
+    logger.setLevel(logging.ERROR)
+
+
+def make_clusters_from_dataframe(df):
+    clusters = []
+    for row in df.itertuples():
+        name = getattr(row, 'name')
+        centroid = getattr(row, 'centroid')
+        top_k = getattr(row, 'top_k')
+        if name is None or name == "":
+            continue
+        d = {'name': name, 'centroid': eval(centroid), 'top_k': top_k}
+        clusters.append(d)
+    return clusters
+
+
+def make_dataframe_from_clusters(clusters):
+    clusters = copy.deepcopy(clusters)
+    for c in clusters:
+        c['centroid'] = "['" + "', '".join(c['centroid']) + "']"
+    res = pd.DataFrame(clusters)
+    return res
 
 
 def clean_string(text):
@@ -79,26 +96,79 @@ def interp_cl(df):
 
 
 class DemoInterface:
+    context_ = None
+    generated_text_ = None
+    clusters_ = None
+    npl_model_url_ = None
+    nlp_model_ = None
+    nn_model_name_ = None
+    nn_model_ = None
+    explainer_ = None
+    sbert_ = None
+    fred_ = None
+    interp_bot_ = None
+    demo_: gr.blocks.Blocks = None
+
     def __init__(self):
         path_sbert = 'FractalGPT/SbertSVDDistil'
         self.sbert_ = SentenceTransformer(path_sbert)
         self.sbert_[0].auto_model = SVDBertModel.from_pretrained(path_sbert)
-
-        self.fred_ = FredStruct()
+        t5_model_name = 't5-small' if os.getenv('TEST_MODE_ON_LOW_SPEC_PC') == 'True' else 'FractalGPT/FRED-T5-Interp'
+        self.fred_ = FredStruct(t5_model_name)
 
         self.demo_ = gr.Blocks()
 
         with self.demo_:
             with gr.Tabs():
                 with gr.TabItem("Texts"):
-                    context_text = gr.Text(label='Context')
-                    output_text = gr.Text(label='Generated text')
+                    gr.Markdown(
+                        "Зачем вводить тексты сюда? </br>"
+                        "Контекст и сгенерированный текст - это входные данные для анализа. </br>")
+                    context_text = gr.Text(label='Context',
+                                           info="**Контекст** это ваш исходный текст, который служит отправной точкой для генерации ответа "
+                                                "пример: 'у кошки грипп и аллергия на антибиотбиотики вопрос: чем лечить кошку? ответ:'",
+                                           lines=1, placeholder="Enter context here...")
+
+                    output_text = gr.Text(label='Generated text',
+                                          info="**Сгенерированный текст** - это результат работы системы, ответ на ваш контекст "
+                                               " 'лечите ее уколами'",
+                                          lines=1, placeholder="Enter generated text here...")
+
                     with gr.Row():
                         texts_load_button = gr.Button("Set texts")
-                        texts_set_checkbox = gr.Checkbox(label='Texts are set', interactive=False)
+                        texts_set_checkbox = gr.Checkbox(label='Texts are set', interactive=False,
+                                                         info="Если тексты установлены, можно переходить к шагу Clusters.")
+
                 with gr.TabItem("Clusters"):
                     with gr.Tabs():
                         with gr.TabItem("Load clusters from file"):
+                            gr.Markdown("""
+                                Загрузите файл с описанием кластеров. Файл должен быть в формате JSON и содержать список кластеров, где каждый кластер описывается следующими ключами:
+                                - `name`: Название кластера (строка).
+                                - `centroid`: Центроид кластера, представленный списком строк (например, список терминов, характеризующих кластер).
+                                - `top_k`: Количество топовых элементов кластера (целое число).
+                                
+                                
+                                пример файла: example_data/clusters.json
+
+                                Пример структуры файла:
+                                ```json
+                                [
+                                  {
+                                    "name": "Кластер 1",
+                                    "centroid": ["термин1", "термин2", "термин3"],
+                                    "top_k": 5
+                                  },
+                                  {
+                                    "name": "Кластер 2",
+                                    "centroid": ["термин4", "термин5", "термин6"],
+                                    "top_k": 3
+                                  }
+                                ]
+                                ```
+
+                                Этот файл используется для анализа и визуализации влияния различных групп слов (кластеров) на сгенерированный текст. Загрузка подходящего файла позволит провести более глубокий анализ и понять, какие тематические группы наиболее важны в контексте генерации текста.
+                                """)
                             with gr.Column():
                                 clusters_file = gr.File(label='Clusters\' file')
                                 with gr.Row():
@@ -115,7 +185,9 @@ class DemoInterface:
                                 with gr.Row():
                                     set_clusters_from_dataframe_button = gr.Button("Set clusters")
 
-                    clusters_set_checkbox = gr.Checkbox(label='Clusters are set', interactive=False)
+                    clusters_set_checkbox = gr.Checkbox(
+                        label='Clusters are set Если кластеры и  NLP модель установлены, можно переходить к шагу LLM model',
+                        interactive=False)
 
                     cluster_table = gr.Dataframe(label='Clusters',
                                                  headers=['name', 'centroid', 'top_k'],
@@ -130,16 +202,25 @@ class DemoInterface:
                         clusters_save_button = gr.Button("Save clusters")
                         clusters_save_checkbox = gr.Checkbox(label='Clusters are saved', interactive=False)
 
-                with gr.TabItem("NLP model"):
-                    nlp_model_url = gr.Text(label='Model url')
+                    nlp_model_url = gr.Text(label='Model url',
+                                            info="Введите URL для загрузки предварительно обученной NLP модели. Модель должна быть в формате, совместимом с библиотекой gensim, например,"
+                                                 " Word2Vec, FastText или любой другой векторной модели слов. например http://vectors.nlpl.eu/repository/20/180.zip",
+                                            placeholder="http://vectors.nlpl.eu/repository/20/180.zip",
+                                            lines=1)
                     with gr.Row():
                         load_nlp_model_button = gr.Button("Load model")
                         nlp_model_set_checkbox = gr.Checkbox(label='NLP model loaded', interactive=False)
                 with gr.TabItem("LLM interpretation model"):
-                    nn_model_name_or_path = gr.Text(label='Model name or path')
+                    nn_model_name_or_path = gr.Text(label='Model name or path',
+                                                    info="Введите название модели или путь к ней для использования в качестве модели интерпретации."
+                                                         " Это должна быть модель на основе GPT или другой современной трансформерной модели, например sberbank-ai/rugpt3small_based_on_gpt2",
+                                                    placeholder="sberbank-ai/rugpt3small_based_on_gpt2",
+                                                    lines=1)
                     with gr.Row():
                         load_nn_model_button = gr.Button("Load model")
-                        nn_model_set_checkbox = gr.Checkbox(label='NN model loaded', interactive=False)
+                        nn_model_set_checkbox = gr.Checkbox(
+                            label='NN model loaded, если модель загружена можно переходить к шагу Results',
+                            interactive=False)
                 with gr.TabItem("Results"):
                     with gr.Row():
                         with gr.Column():
@@ -206,7 +287,7 @@ class DemoInterface:
     # FUNCTIONALITY:
 
     def launch(self):
-        self.demo_.launch()
+        self.demo_.launch(share=True, debug=False, server_name="127.0.0.1", inbrowser=True)
 
     def show_results(self):
         self.explainer_ = interp.ExplainerGPT2(gpt_model=self.nn_model_, nlp_model=self.nlp_model_)
@@ -240,9 +321,6 @@ class DemoInterface:
         cluster_importance_norm_plt = df_to_heatmap_plot(expl_data.cluster_imp_aggr_df,
                                                          title="Карта важности кластеров, группированная")
 
-        # word_importance_image.style(width=256, height=256)
-        # word_importance_norm_image.style(width=256, height=256)
-
         return word_importance_plt, word_importance_norm_plt, cluster_importance_plt, cluster_importance_norm_plt
 
     # PRIVATE FUNCTIONS:
@@ -255,7 +333,7 @@ class DemoInterface:
         return "", chat_history
 
     def load_context_and_generated_text_(self, context, generated_text):
-        self.context = context
+        self.context_ = context
         self.generated_text_ = generated_text
 
         return True, True
@@ -281,7 +359,7 @@ class DemoInterface:
 
     def load_nlp_model_(self, url):
         self.npl_model_url_ = url
-        nlp_model_path = dl.DownloadManager.load_zip(url)
+        nlp_model_path = DownloadManager.load_zip(url)
         self.nlp_model_ = gensim.models.KeyedVectors.load_word2vec_format(nlp_model_path, binary=True)
 
         return True, True
@@ -295,26 +373,3 @@ class DemoInterface:
                                     attribution_method="integrated_gradients")
 
         return True, True
-
-    # FIELDS:
-
-    context_ = None
-    generated_text_ = None
-
-    clusters_ = None
-
-    npl_model_url_ = None
-    nlp_model_ = None
-
-    nn_model_name_ = None
-    nn_model_ = None
-
-    explainer_ = None
-
-    sbert_ = None
-
-    fred_ = None
-
-    interp_bot_ = None
-
-    demo_: gr.blocks.Blocks = None

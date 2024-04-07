@@ -1,15 +1,16 @@
 import copy
+import io
 import math
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
-import io
 
 
 def df_to_heatmap_plot(df, title=None):
     df_temp = copy.deepcopy(df)
     df_temp.set_index('Tokens', inplace=True)
-    
+
     rows_number = df.shape[0]
     cols_number = df.shape[1]
 
@@ -18,11 +19,7 @@ def df_to_heatmap_plot(df, title=None):
     if title:
         plt.title(title)
     plt.yticks(rotation=45, va='top')
-    
+
     img_buf = io.BytesIO()
     plt.savefig(img_buf, format='png')
-    im = Image.open(img_buf)
-    #im.show(title="My Image")
-
-    #img_buf.close()
-    return im
+    return Image.open(img_buf)

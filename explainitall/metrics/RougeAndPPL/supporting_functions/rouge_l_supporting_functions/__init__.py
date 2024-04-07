@@ -1,5 +1,0 @@
-from .find_lowest_position_higher_then_current import find_lowest_position_higher_then_current
-from .get_element_positions import get_element_positions
-from .is_seq1_better_then_seq2 import is_seq1_better_then_seq2
-from .unite_sequencies import unite_sequencies
-from .update_existing_sequencies_with_next_element import update_existing_sequencies_with_next_element

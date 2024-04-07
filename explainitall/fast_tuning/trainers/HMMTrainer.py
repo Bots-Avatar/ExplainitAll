@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class GPT2HMMDataProcessor:
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
@@ -17,29 +18,23 @@ class GPT2HMMDataProcessor:
         return str(list_x)
 
     def createXY(self, tokens_gpt):
-        X = []
-        Y = []
+        x = []
+        y = []
 
         for i in range(len(tokens_gpt) - 2):
             str_x = self.token_pair_2_str(tokens_gpt[i:i + 2])
-            X.append(str_x)
-            Y.append(tokens_gpt[i + 2])
+            x.append(str_x)
+            y.append(tokens_gpt[i + 2])
 
-        return X, Y
-
-    @staticmethod
-    def encode_samples_x(X, x_encode):
-        encoded = []
-        for x in X:
-            encoded.append(x_encode[x])
-        return encoded
+        return x, y
 
     @staticmethod
-    def encode_samples_y(Y, y_encode):
-        encoded = []
-        for y in Y:
-            encoded.append(y_encode[y])
-        return encoded
+    def encode_samples_x(x, y_encode):
+        return [y_encode[i] for i in x]
+
+    @staticmethod
+    def encode_samples_y(y, y_encode):
+        return [y_encode[i] for i in y]
 
     @staticmethod
     def encode_end(tokens_gpt, x_encode):
@@ -47,9 +42,9 @@ class GPT2HMMDataProcessor:
         return x_encode[str_x] if str_x in x_encode else -1
 
     def create_data(self, tokens_gpt):
-        X, Y = self.createXY(tokens_gpt)
-        X_set = list(set(X))
-        mask_y = list(set(Y))
+        x, y = self.createXY(tokens_gpt)
+        x_set = list(set(x))
+        mask_y = list(set(y))
 
         x_encode = {}
         x_decode = []
@@ -57,16 +52,16 @@ class GPT2HMMDataProcessor:
         y_encode = {}
         y_decode = []
 
-        for i, x in enumerate(X_set):
-            x_encode.update({x: i})
-            x_decode.append(x)
+        for i, xi in enumerate(x_set):
+            x_encode.update({xi: i})
+            x_decode.append(xi)
 
-        for i, y in enumerate(mask_y):
-            y_encode.update({y: i})
-            y_decode.append(y)
+        for i, yi in enumerate(mask_y):
+            y_encode.update({yi: i})
+            y_decode.append(yi)
 
-        x_enc = self.encode_samples_x(X, x_encode)
-        y_enc = self.encode_samples_y(Y, y_encode)
+        x_enc = self.encode_samples_x(x, x_encode)
+        y_enc = self.encode_samples_y(y, y_encode)
 
         return {'x': x_enc, 'y': y_enc, 'x_encoder': x_encode, 'y_encoder': y_encode, 'x_decoder': x_decode,
                 'y_decoder': y_decode}
@@ -74,11 +69,11 @@ class GPT2HMMDataProcessor:
     @staticmethod
     def train(data):
         states = {}
-        N = len(data['y'])
+        n = len(data['y'])
         x = data['x']
         y = data['y']
 
-        for i in range(N):
+        for i in range(n):
             if x[i] in states:
                 if y[i] in states[x[i]]['tokens']:
                     states[x[i]]['probs'][y[i]] += 1
@@ -90,21 +85,21 @@ class GPT2HMMDataProcessor:
                 states[x[i]]['probs'].update({y[i]: 1})
                 states[x[i]]['tokens'].update({y[i]: 0})
 
-        N = max(states.keys()) + 1
+        n = max(states.keys()) + 1
         n_states = []
 
-        for i in range(N):
+        for i in range(n):
             tokens = list(states[i]['tokens'].keys())
-            n = 0
+            total_count = 0
             probs = []
 
             for t in tokens:
-                p = states[i]['probs'][t]
-                n += p
-                probs.append(p)
+                count = states[i]['probs'][t]
+                total_count += count
+                probs.append(count)
 
-            for i, p in enumerate(probs):
-                probs[i] = p / n
+            for j, p in enumerate(probs):
+                probs[j] = p / total_count
 
             n_states.append({'tokens': tokens, 'probs': probs})
 

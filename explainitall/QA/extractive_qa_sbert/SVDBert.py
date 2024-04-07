@@ -1,10 +1,12 @@
 import torch.nn as nn
 from transformers import BertModel
 
+
 class SVDLinearLayer(nn.Module):
     """
     Линейный слой, использующий пространство уменьшенной размерности, использующий SVD.
     """
+
     def __init__(self, in_features, out_features, h_dim, bias=True):
         super(SVDLinearLayer, self).__init__()
         self.encoder = nn.Linear(in_features, h_dim, bias=False)
@@ -15,10 +17,12 @@ class SVDLinearLayer(nn.Module):
         x = self.decoder(x)
         return x
 
+
 class SVDBertModel(BertModel):
     """
     Модель BERT с уменьшенной размерностью в определенных слоях с использованием подхода SVD.
     """
+
     def __init__(self, config, svd_dim=5):
         super(SVDBertModel, self).__init__(config)
 

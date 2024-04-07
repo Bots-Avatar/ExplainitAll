@@ -5,9 +5,9 @@ import pandas as pd
 from inseq import AttributionModel
 
 from explainitall import clusters
+from explainitall.clusters import ClusterManager, aggregate_cluster_df
 from explainitall.gpt_like_interp import viz
 from . import inseq_helpers
-from explainitall.clusters import ClusterManager, aggregate_cluster_df
 from .inseq_helpers import AttrObj
 
 
@@ -57,11 +57,12 @@ class ExplainerGPT2:
                   batch_size: int = 50,
                   steps: int = 34,
                   max_new_tokens: int = None,
-                  aggr_f = 'sum') -> ExplainerGPT2Output:
+                  aggr_f='mean') -> ExplainerGPT2Output:
         self._attribute(input_texts, generated_texts, max_new_tokens, steps, batch_size)
-        return self._run_pipeline(clusters_description,aggr_f)
+        return self._run_pipeline(clusters_description, aggr_f)
 
-    def calc_max_tokes(self, input_texts, generated_texts):
+    @staticmethod
+    def calc_max_tokes(input_texts, generated_texts):
         from gensim.utils import tokenize
         tokens = list(tokenize(input_texts + generated_texts, lowercase=True))
         num_tokens = len(tokens)
@@ -79,13 +80,9 @@ class ExplainerGPT2:
                 generation_args = {"max_new_tokens": max_new_tokens}
 
         out = self.gpt_model.attribute(
-            input_texts=input_texts,
-            generated_texts=input_texts + generated_texts,
-            n_steps=steps,
-            generation_args=generation_args,
-            show_progress=True,
-            pretty_progress=False,
-            internal_batch_size=batch_size
+            input_texts=input_texts, generated_texts=input_texts + generated_texts,
+            n_steps=steps, generation_args=generation_args,
+            show_progress=True, pretty_progress=False, internal_batch_size=batch_size
         )
         self.attributions = inseq_helpers.get_first_attribute(out)
 
@@ -102,14 +99,7 @@ class ExplainerGPT2:
         cluster_imp_df = cluster_interpreter.get_cluster_importance_df(self.attributions)
         cluster_imp_aggr_df = aggregate_cluster_df(cluster_imp_df, aggr_f=aggr_f)
 
-
-        return ExplainerGPT2Output(attributions=self.attributions,
-                                   attributions_grouped=group_attr,
-                                   attributions_grouped_norm=norm_attr,
-
-                                   cluster_imp_df=cluster_imp_df,
-                                   cluster_imp_aggr_df=cluster_imp_aggr_df,
-
-                                   word_imp_df=word_imp_df,
-                                   word_imp_norm_df=word_imp_norm_df)
-
+        return ExplainerGPT2Output(
+            attributions=self.attributions, attributions_grouped=group_attr, attributions_grouped_norm=norm_attr,
+            cluster_imp_df=cluster_imp_df, cluster_imp_aggr_df=cluster_imp_aggr_df,
+            word_imp_df=word_imp_df, word_imp_norm_df=word_imp_norm_df)

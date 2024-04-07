@@ -1,7 +1,7 @@
 import nltk
+import numpy as np
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer, util
-import numpy as np
 
 
 def sim(embedding_1, embedding_2):

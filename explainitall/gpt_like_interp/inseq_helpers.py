@@ -1,17 +1,48 @@
 import re
-from typing import Tuple
+from copy import deepcopy
+from typing import Tuple, Union, Optional
 
 import numpy as np
 import pandas as pd
+import torch
 from inseq import FeatureAttributionOutput
-from inseq.utils import sum_normalize_attributions
+from inseq.utils.typing import GranularSequenceAttributionTensor as Gast
+from inseq.utils.typing import TokenSequenceAttributionTensor as Tsat
+from torch.linalg import vector_norm
 
 from explainitall import stat_helpers
 
 
+def sum_normalize_attributions(
+        attributions: Union[Gast, Tuple[Gast, Gast]],
+        cat_dim: int = 0,
+        norm_dim: Optional[int] = 0,
+) -> Tsat:
+    """
+    Суммаризация и нормализация тензоров по dim_sum
+    РезультатЖ матрица векторов строк
+    """
+    concat = False
+    if isinstance(attributions, tuple):
+        concat = True
+        orig_sizes = [a.shape[cat_dim] for a in attributions]
+        attributions = torch.cat(attributions, dim=cat_dim)
+    else:
+        orig_sizes = [attributions.shape[cat_dim]]
+    attributions = vector_norm(attributions, ord=2, dim=-1)
+    if norm_dim is not None:
+        attributions = attributions / attributions.nansum(dim=norm_dim, keepdim=True)
+    if len(attributions.shape) == 1:
+        attributions = attributions.unsqueeze(0)
+    if concat:
+        attributions = attributions.split(orig_sizes, dim=cat_dim)
+        return attributions[0], attributions[1]
+    return attributions
+
+
 def fix_ig_tokens(feature_attr: FeatureAttributionOutput):
     from transformers import GPT2Tokenizer
-    from copy import deepcopy
+
     feature_attr_conv = deepcopy(feature_attr)
     dt = GPT2Tokenizer.from_pretrained(feature_attr_conv.info['model_name'])
 
@@ -42,10 +73,6 @@ def get_g_arrays(feature_attr: FeatureAttributionOutput):
     target_arrays = []
     for attr in feature_attr.sequence_attributions:
         ta = attr.target_attributions
-
-        # ta1 = normalize_attributions(ta)
-        # ta1 = np.sum(np.array(ta1, dtype=float), axis=2) / 100
-
         ta2 = sum_normalize_attributions(ta)
         ta2 = np.array(ta2, dtype=float)
 
@@ -57,8 +84,8 @@ class AttrObj:
     def __init__(self,
                  phrase_input: str,
                  phrase_generated: str,
-                 tokens_input: Tuple[str],
-                 tokens_generated: Tuple[str],
+                 tokens_input: Tuple[str, ...],
+                 tokens_generated: Tuple[str, ...],
                  array: np.ndarray):
         self.phrase_input = phrase_input
         self.phrase_generated = phrase_generated
@@ -89,15 +116,6 @@ def get_first_attribute(feature_attr: FeatureAttributionOutput):
                    array=array)
 
 
-#
-# ParsedAttribution = namedtuple("ParsedAttribution",
-#                                ("generated_labels_only",
-#                                 "generated_labels_full",
-#                                 "array",
-#                                 "input_text",
-#                                 "generated_text_only"))
-
-
 def attr_to_df(attr: AttrObj):
     """Преобразует атрибуты в DataFrame"""
     df = pd.DataFrame(attr.array)
@@ -105,55 +123,6 @@ def attr_to_df(attr: AttrObj):
     df = df.sort_index()
     df.insert(0, 'Tokens', attr.tokens_input + attr.tokens_generated)
     return df
-
-
-#
-# def group_by(attr, gauss_norm=False):
-#     """
-#     Группировка по словам и применение агрегации максимума для каждой группы.
-#
-#     :param attr: объект ParsedAttribution с данными для группировки
-#     :param gauss_norm: флаг для применения нормализации с использованием гауссовых параметров
-#     :return: объект ParsedAttribution с результатами группировки
-#     """
-#     input_grouped = Detokenizer(attr.input_text + attr.generated_text_only,
-#                                 attr.generated_labels_full).group_text()
-#     generated_grouped = Detokenizer(attr.generated_text_only, attr.generated_labels_only).group_text()
-#
-#     input_grouped_gb = []
-#     for i, gr in enumerate(input_grouped):
-#         input_grouped_gb += ([i] * len(gr))
-#
-#     generated_grouped_gb = []
-#     for i, gr in enumerate(generated_grouped):
-#         generated_grouped_gb += ([i] * len(gr))
-#
-#     grouped_columns = {}
-#     for col, group in zip(attr.array.T, generated_grouped_gb):
-#         if group in grouped_columns:
-#             grouped_columns[group].append(col)
-#         else:
-#             grouped_columns[group] = [col]
-#     result = {group: np.max(np.column_stack(cols), axis=1) for group, cols in grouped_columns.items()}
-#     result_arr = np.column_stack([result[group] for group in sorted(result)])
-#
-#     df = pd.DataFrame(result_arr, index=input_grouped_gb)
-#
-#     # Group by the index (which is based on list1) and apply the max aggregation function
-#     grouped_max = df.groupby(df.index).max()
-#
-#     # Convert the result back to a numpy array
-#     result = grouped_max.to_numpy()
-#     generated_labels_only = ["".join(x) for x in generated_grouped]
-#     generated_labels_full = ["".join(x) for x in input_grouped]
-#     if gauss_norm:
-#         result = stat_helpers.calc_gauss_stat_params(result)['new_arr']
-#
-#     return ParsedAttribution(generated_labels_only=generated_labels_only,
-#                              generated_labels_full=generated_labels_full,
-#                              array=result,
-#                              input_text=attr.input_text,
-#                              generated_text_only=attr.generated_text_only)
 
 
 def squash_arr(arr, squash_row_mask, squash_col_mask, aggr_f=np.max):
@@ -191,11 +160,8 @@ class Detokenizer:
         """
         Очищает текст от ненужных символов.
 
-        Аргументы:
-        - s (str): исходный текст
-
-        Возвращает:
-        - str: очищенный текст
+        Аргументы: исходный текст
+        Возвращает: очищенный текст
         """
         for dash in self.dash_chars:
             s = s.replace(dash, "-")
@@ -207,9 +173,7 @@ class Detokenizer:
     def group_text(self):
         """
         Группирует токены в слова.
-
-        Возвращает:
-        - list: список группированных слов
+        Возвращает: список группированных слов
         """
         text = self.clean_text(self.text)
         pairs = [(self.clean_text(k)) for k in self.pairs]
@@ -242,12 +206,8 @@ def calculate_mask(grouped_elements):
 
 
 def group_by(attr: AttrObj, gmm_norm=False) -> AttrObj:
-    tokens_input_grouped = Detokenizer(attr.phrase_input,
-                                       attr.tokens_input).group_text()
-
-    tokens_generated_grouped = Detokenizer(attr.phrase_generated,
-                                           attr.tokens_generated).group_text()
-
+    tokens_input_grouped = Detokenizer(attr.phrase_input, attr.tokens_input).group_text()
+    tokens_generated_grouped = Detokenizer(attr.phrase_generated, attr.tokens_generated).group_text()
     tokens_input_generated_mask = calculate_mask(tokens_input_grouped + tokens_generated_grouped)
     tokens_generated_mask = calculate_mask(tokens_generated_grouped)
 
@@ -255,7 +215,7 @@ def group_by(attr: AttrObj, gmm_norm=False) -> AttrObj:
                                 squash_col_mask=tokens_generated_mask,
                                 squash_row_mask=tokens_input_generated_mask)
 
-    tokens_input_grouped_flatten = tuple("".join(x) for x in tokens_input_grouped)
+    tokens_input_grouped_flatten = tuple(["".join(x) for x in tokens_input_grouped])
     tokens_generated_grouped_flatten = tuple("".join(x) for x in tokens_generated_grouped)
 
     if gmm_norm:
