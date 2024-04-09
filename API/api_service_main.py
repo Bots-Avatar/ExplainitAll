@@ -3,6 +3,7 @@ import os
 from typing import List
 
 import gensim
+import numpy as np
 from fastapi import FastAPI
 from inseq import load_model
 from pydantic import BaseModel, constr
@@ -56,7 +57,7 @@ class ApiServerInit:
         # self.fred = FredStruct('SiberiaSoft/SiberianFredT5-instructor')
 
         if os.getenv('TEST_MODE_ON_LOW_SPEC_PC') == 'True':
-            self.fred = FredStruct('t5-small')
+            self.fred = FredStruct('ai-forever/FRED-T5-large')
         else:
             self.fred = FredStruct('FractalGPT/FRED-T5-Interp')
 
@@ -64,6 +65,24 @@ class ApiServerInit:
         self.__init_knn__(questions, answers)
         self.bot = PromptBot(self.knn, self.sbert, self.fred, answers, device=self.device)
         return True
+
+    @staticmethod
+    def df_to_dict(data_frame):
+        df_copy = data_frame.copy(deep=True)
+
+        def make_columns_unique(df):
+            new_columns = {}
+            for column in df.columns:
+                if column in new_columns:
+                    new_columns[column] += 1
+                    new_name = f"{column}_{new_columns[column]}"
+                else:
+                    new_columns[column] = 0
+                    new_name = column
+                yield new_name
+
+        df_copy.columns = list(make_columns_unique(df_copy))
+        return df_copy.replace([np.nan, np.inf, -np.inf], ["nan", "inf", "-inf"]).to_dict(orient="split")
 
     def evaluate(self, nlp_model_path, nn_model_path, clusters, prompt, generated_text):
         self.clusters_r = [{
@@ -84,11 +103,10 @@ class ApiServerInit:
             steps=34,
             # max_new_tokens=19
         )
-
-        return {"word_importance_map": expl_data.word_imp_df.to_json(orient="split"),
-                "word_importance_map_normalized": expl_data.word_imp_norm_df.to_json(orient="split"),
-                "cluster_importance_map": expl_data.cluster_imp_df.to_json(orient="split"),
-                "cluster_importance_map_normalized": expl_data.cluster_imp_aggr_df.to_json(orient="split")}
+        return {"word_importance_map": self.df_to_dict(expl_data.word_imp_df),
+                "word_importance_map_normalized": self.df_to_dict(expl_data.word_imp_norm_df),
+                "cluster_importance_map": self.df_to_dict(expl_data.cluster_imp_df),
+                "cluster_importance_map_normalized": self.df_to_dict(expl_data.cluster_imp_aggr_df)}
 
     def get_answer(self, q, top_k):
         return self.bot.get_answers(q, top_k=top_k)
@@ -135,10 +153,13 @@ async def redirect_to_docs():
                 "application/json": {
                     "examples": {
                         "example1": {
-                            "summary": "Load basic Q&A dataset",
+                            "summary": "Загрузка базового набора данных вопросов и ответов",
                             "value": {
-                                "questions": ["What is AI?", "Define machine learning"],
-                                "answers": ["Artificial Intelligence", "A subset of AI"]
+                                "questions": ["Что такое коала?",
+                                              "Опишите африканского слона"],
+
+                                "answers": ["Это вид медведей, обитающих в Австралии.",
+                                            "Это крупное млекопитающее с длинным хоботом."]
                             }
                         }
                     }
@@ -148,24 +169,24 @@ async def redirect_to_docs():
     }
 )
 async def load_dataset(item: LoadDatasetItem):
-    """Loads a dataset consisting of questions and answers into the Q&A model"""
+    """Загружает набор данных, состоящий из вопросов и ответов о животных, в модель вопросов и ответов"""
     result = await asyncio.to_thread(api_server_init.load_dataset, item.questions, item.answers)
     return {"result": result}
 
 
 @app.post(
     "/get_answer",
-    summary="Retrieve answers for a specific question",
-    response_description="The retrieved answer(s) to the specified question",
+    summary="Получить ответы на вопросы",
+    response_description="Полученный(е) ответ(ы) на указанные вопросы",
     openapi_extra={
         "requestBody": {
             "content": {
                 "application/json": {
                     "examples": {
                         "example1": {
-                            "summary": "Retrieve answer for a given question",
+                            "summary": "Получить ответ на вопрос о животном",
                             "value": {
-                                "question": "What is artificial intelligence?",
+                                "question": "Что за животное коала?",
                                 "top_k": 1
                             }
                         }
@@ -177,7 +198,7 @@ async def load_dataset(item: LoadDatasetItem):
 )
 async def get_answer(item: GetAnswerItem):
     """
-    Retrieves answers to a specified question using the loaded Q&A model.
+    Получает ответы на указанный вопрос с использованием загруженной модели вопросов и ответов
     """
     result = await asyncio.to_thread(api_server_init.get_answer, item.question, item.top_k)
     return {"result": result}
@@ -185,27 +206,27 @@ async def get_answer(item: GetAnswerItem):
 
 @app.post(
     "/evaluate",
-    summary="Evaluate generated text using interpretability models",
-    response_description="Results of the evaluation",
+    summary="Оценить сгенерированный текст с использованием модели",
+    response_description="Результаты оценки",
     openapi_extra={
         "requestBody": {
             "content": {
                 "application/json": {
                     "examples": {
                         "example1": {
-                            "summary": "Evaluate text interpretability",
+                            "summary": "Оценить интерпретируемость текста",
                             "value": {
                                 "nlp_model_path": 'http://vectors.nlpl.eu/repository/20/180.zip',
-                                "nn_model_path": "distilgpt2",
+                                "nn_model_path": "ai-forever/rugpt3small_based_on_gpt2",
                                 "clusters": [
-                                    {
-                                        "name": "Technology",
-                                        "centroid": ["AI", "Machine Learning", "Deep Learning"],
-                                        "top_k": 5
-                                    }
+                                    {'name': 'Животные', 'centroid': ['собака', 'кошка', 'заяц'], 'top_k': 140},
+                                    {'name': 'Лекарства', 'centroid': ['уколы', 'таблетки', 'противовирусное'],
+                                     'top_k': 160},
+                                    {'name': 'Болезни', 'centroid': ['простуда', 'орви', 'орз', 'грипп'], 'top_k': 20},
+                                    {'name': 'Симптомы', 'centroid': ['температура', 'насморк'], 'top_k': 20}
                                 ],
-                                "prompt": "Explain how AI impacts learning.",
-                                "generated_text": "AI plays a crucial role in modern learning by..."
+                                "prompt": "я думаю что у моей кошки простуда, у нее температура, постоянный кашель: чем мне лечить мою кошку? ответ:",
+                                "generated_text": "На сегодняшний день существует специальное противовирусное лечение для кошек, так же можно применять антибиотики"
                             }
                         }
                     }
@@ -215,10 +236,10 @@ async def get_answer(item: GetAnswerItem):
     }
 )
 async def evaluate(item: EvaluationItem):
-    """Evaluates the interpretability of generated text with respect to the input prompt and provided clusters"""
-    result = await asyncio.to_thread(api_server_init.evaluate, item.nlp_model_path, item.nn_model_path, item.clusters,
-                                     item.prompt, item.generated_text)
-    return {"result": result}
+    """Оценивает интерпретируемость сгенерированного текста относительно входного подсказки и предоставленных кластеров"""
+    data = await asyncio.to_thread(api_server_init.evaluate, item.nlp_model_path, item.nn_model_path, item.clusters,
+                                   item.prompt, item.generated_text)
+    return data
 
 
 if __name__ == "__main__":
