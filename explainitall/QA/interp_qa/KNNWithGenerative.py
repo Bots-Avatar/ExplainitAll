@@ -11,7 +11,7 @@ nltk.download('punkt')
 
 class FredStruct:
 
-    def __init__(self, path='FractalGPT/FRED-T5-Interp', device='cpu'):
+    def __init__(self, path='Ponimash/FredInterpreter', device='cpu'):
         self.tokenizer = AutoTokenizer.from_pretrained(path)
         self.fred_model = AutoModelForSeq2SeqLM.from_pretrained(path)
         self.fred_model = self.fred_model.to(device)
