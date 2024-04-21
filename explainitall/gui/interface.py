@@ -327,7 +327,7 @@ class DemoInterface:
 
     def respond_(self, message, chat_history):
         ans = self.interp_bot_.get_answers(message, top_k=3)
-        bot_reply = ans.split('.')[0]
+        bot_reply = 'Кластер' + ans.split('.')[0].split('Кластер')[1]
         chat_history.append((message, bot_reply))
 
         return "", chat_history
