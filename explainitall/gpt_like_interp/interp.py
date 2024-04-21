@@ -97,7 +97,11 @@ class ExplainerGPT2:
                                                           cluster_manager=self._cluster_manager)
 
         cluster_imp_df = cluster_interpreter.get_cluster_importance_df(self.attributions)
-        cluster_imp_aggr_df = aggregate_cluster_df(cluster_imp_df, aggr_f=aggr_f)
+        try:
+            cluster_imp_aggr_df = aggregate_cluster_df(cluster_imp_df, aggr_f=aggr_f)
+        except Exception as e:
+            print(f"Неверно заданы выходные кластеры: {e}")
+            cluster_imp_aggr_df = pd.DataFrame()
 
         return ExplainerGPT2Output(
             attributions=self.attributions, attributions_grouped=group_attr, attributions_grouped_norm=norm_attr,
