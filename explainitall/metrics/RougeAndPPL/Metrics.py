@@ -93,20 +93,19 @@ class Metric_ppl(Metric):
         prev_end_loc = 0
         for begin_loc in range(0, seq_len, self.stride_):
             end_loc = min(begin_loc + max_length, seq_len)
-            trg_len = end_loc - prev_end_loc  # may be different from stride on last loop
+            trg_len = end_loc - prev_end_loc
             input_ids = torch.tensor(reference_encodings[begin_loc:end_loc])
             input_ids = input_ids.to(self.model_.device)
             target_ids = input_ids.clone()
             target_ids[:-trg_len] = -100
-            # target_ids = [-100] * (len(input_ids) - trg_len) + input_ids[trg_len:]
+            input_ids = input_ids.unsqueeze(0)
+            # with open(f'output_file{begin_loc}.txt', 'w') as file:
+            #     output_info = f"input_ids: {str(input_ids)}, type: {(input_ids.dtype)}"
+            #     print(output_info)
+            #     file.write(output_info + "\n")
 
             with torch.no_grad():
                 outputs = self.model_(input_ids, labels=target_ids)
-
-                # loss is calculated using CrossEntropyLoss which averages over input tokens.
-                # Multiply it with trg_len to get the summation instead of average.
-                # We will take average over all the tokens to get the true average
-                # in the last step of this example.
                 neg_log_likelihood = outputs.loss * trg_len
 
             nlls.append(neg_log_likelihood)
@@ -117,4 +116,3 @@ class Metric_ppl(Metric):
 
         ppl = torch.exp(torch.stack(nlls).sum() / end_loc)
         return {'value': ppl.item()}
-

@@ -1,9 +1,6 @@
-import os
-
 import gradio as gr
 import pandas as pd
-import sqlalchemy as db
-from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+from transformers import GPT2LMHeadModel, GPT2TokenizerFast, AutoTokenizer, AutoModel, AutoModelForCausalLM
 
 from explainitall.metrics.RougeAndPPL.Metrics import Metric_ppl, MetricRougeL, MetricRougeN
 from explainitall.metrics.RougeAndPPL.Metrics_calculator import Metrics_calculator
@@ -62,7 +59,6 @@ class MetricCalculationInterface:
 
                                     dataset_visualization = gr.Dataframe(label='Dataset',
                                                                          headers=['context', 'reference'],
-                                                                         # overflow_row_behaviour='paginate',
                                                                          wrap=False,
                                                                          height=500)
                                 with gr.Row():
@@ -117,16 +113,12 @@ class MetricCalculationInterface:
             print("Model name or path is required.", model_name_or_path)
 
         self.model_successfully_loaded_ = False
-        # self.model_checkbox_.value = False
 
-        self.tokenizer_ = GPT2TokenizerFast.from_pretrained(model_name_or_path)
+        self.tokenizer_ = AutoTokenizer.from_pretrained(model_name_or_path)
         if self.tokenizer_.pad_token is None:
             self.tokenizer_.pad_token = self.tokenizer_.eos_token
-        self.model_ = GPT2LMHeadModel.from_pretrained(model_name_or_path)
+        self.model_ = AutoModelForCausalLM.from_pretrained(model_name_or_path)
 
-        # path = os.path.normpath(model_name_or_path)
-        # path_list = path.split(os.sep)
-        # self.model_name_ = path_list[-1]
         self.model_name_ = str(model_name_or_path)
 
         self.calculator_ = Metrics_calculator(self.tokenizer_)
@@ -143,7 +135,6 @@ class MetricCalculationInterface:
 
     def load_dataset_(self, csvfile, title):
         self.dataset_successfully_loaded_ = False
-        # self.dataset_checkbox_.value = False
 
         print("csvfile", csvfile)
         print("title", title)

@@ -307,12 +307,15 @@ class DemoInterface:
         vects_x = self.sbert_.encode(clean)
         m = vects_x.mean(axis=0)
         s = vects_x.std(axis=0)
-        knn_vects_x = (vects_x - m) / s
-        knn = KNeighborsClassifier(metric=cos_dist)
-        knn.fit(knn_vects_x, cl_desc)
+        try:
+            knn_vects_x = (vects_x - m) / s
+            knn = KNeighborsClassifier(metric=cos_dist)
+            knn.fit(knn_vects_x, cl_desc)
 
-        self.interp_bot_ = PromptBot(knn, self.sbert_, self.fred_, cl_desc, device='cpu')
-
+            self.interp_bot_ = PromptBot(knn, self.sbert_, self.fred_, cl_desc, device='cpu')
+        except:
+            print("Err")
+            self.interp_bot_ = None
         word_importance_plt = df_to_heatmap_plot(expl_data.word_imp_df, title="Карта важности слов")
         word_importance_norm_plt = df_to_heatmap_plot(expl_data.word_imp_norm_df,
                                                       title="Карта важности слов, нормированная")

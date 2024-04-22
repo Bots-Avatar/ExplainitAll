@@ -45,14 +45,19 @@ def show_distribution_plot(array: np.ndarray):
 
 
 def df_to_heatmap(df, title=None, annot=True):
-    df_temp = copy.deepcopy(df)
-    df_temp.set_index('Tokens', inplace=True)
+    try:
+        df_temp = copy.deepcopy(df)
+        df_temp.set_index('Tokens', inplace=True)
 
-    plt.figure(figsize=(15, 10))
-    sns.heatmap(df_temp, annot=annot, cmap='coolwarm', linewidths=0.5, linecolor='lightgrey')
-    if title:
-        plt.title(title, fontsize=14)
-    plt.yticks(rotation=45, va='top', fontsize=10)
-    plt.xticks(rotation=45, fontsize=10)
-    plt.tight_layout()
-    plt.show()
+        plt.figure(figsize=(15, 10))
+        sns.heatmap(df_temp, annot=annot, cmap='coolwarm', linewidths=0.5, linecolor='lightgrey')
+        if title:
+            plt.title(title, fontsize=14)
+        plt.yticks(rotation=45, va='top', fontsize=10)
+        plt.xticks(rotation=45, fontsize=10)
+        plt.tight_layout()
+        plt.show()
+    except:
+        print("Данные отсутствуют или неполны.")
+        plt.figure(figsize=(15, 10))
+        plt.text(0.5, 0.5, 'Данные отсутствуют или неполны, Нет данных для отображения', fontsize=14, ha='center')
