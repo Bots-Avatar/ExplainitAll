@@ -1,3 +1,5 @@
+[![Downloads](https://img.shields.io/pypi/dm/explainitall.svg)](https://pypi.org/project/explainitall/)
+
 # **ExplainitAll**
 
 **ExplainitAll** — это библиотека для интерпретируемого ИИ, предназначенная для интерпретации генеративных моделей (
