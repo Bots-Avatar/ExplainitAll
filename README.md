@@ -1,4 +1,4 @@
-[![Downloads](https://img.shields.io/pypi/dm/explainitall.svg)](https://pypi.org/project/explainitall/)
+* [pypi explainitall](https://pypi.org/project/explainitall/)[![Downloads](https://img.shields.io/pypi/dm/explainitall.svg)](https://pypi.org/project/explainitall/)
 
 # **ExplainitAll**
 
