@@ -1,4 +1,6 @@
 from abc import ABC, abstractmethod
+from transformers import PreTrainedModel, PreTrainedTokenizer
+from typing import List, Dict
 
 import torch
 
@@ -8,7 +10,6 @@ from explainitall.metrics.RougeAndPPL.rouge_N import rouge_N
 
 
 class Metric(ABC):
-
     @staticmethod
     def preprocess(contexts, references, candidates, tokenizer):
         raise NotImplementedError
@@ -61,58 +62,59 @@ class MetricStandard(Metric):
 
 class Metric_ppl(Metric):
 
-    def __init__(self, model, stride):
-        self.model_ = model
-        self.stride_ = stride
+    def __init__(self, model: PreTrainedModel, stride: int):
+        
+        self.model = model
+        self.stride = stride
 
     @staticmethod
-    def preprocess(contexts, references, candidates, tokenizer):
-        res = {'references': [], 'candidates': []}
+    def preprocess(contexts: List[str], references: List[str], candidates: List[str], tokenizer: PreTrainedTokenizer) -> Dict[str, List[List[int]]]:
+        """
+        Предобработка данных
+        """
+        tokenized_data = {'references': [], 'candidates': []}
 
-        for i, v in enumerate(contexts):
-            reference_encodings = tokenizer(references[i])
-            res['references'].append(reference_encodings.input_ids)
+        for context, reference in zip(contexts, references):
+            encoded_reference = tokenizer(reference)
+            tokenized_data['references'].append(encoded_reference.input_ids)
 
-        return res
+        return tokenized_data
 
-    def calculate(self, references_encodings, candidates_encodings):
-        res = []
+    def calculate(self, reference_encodings: List[List[int]], candidate_encodings: List[List[int]]) -> List[Dict[str, float]]:
+        """
+        Вычисление ppl для списка токенизированных текстов
+        """
+        perplexities = [self._calculate_perplexity(encodings) for encodings in reference_encodings]
+        return perplexities
 
-        i = 0
-        while i < len(references_encodings):
-            res.append(self._calculate_for_one(references_encodings[i]))
-            i += 1
+    def _calculate_perplexity(self, encodings: List[int]) -> Dict[str, float]:
+        """
+        Вычисление перплексии для одного токенизированного текста
+        """
+        max_length = self.model.config.n_positions
+        sequence_length = len(encodings)
 
-        return res
-
-    def _calculate_for_one(self, reference_encodings):
-        max_length = self.model_.config.n_positions
-        seq_len = len(reference_encodings)
-
-        nlls = []
+        neg_log_likelihoods = []
         prev_end_loc = 0
-        for begin_loc in range(0, seq_len, self.stride_):
-            end_loc = min(begin_loc + max_length, seq_len)
-            trg_len = end_loc - prev_end_loc
-            input_ids = torch.tensor(reference_encodings[begin_loc:end_loc])
-            input_ids = input_ids.to(self.model_.device)
+
+        for start_loc in range(0, sequence_length, self.stride):
+            end_loc = min(start_loc + max_length, sequence_length)
+            target_length = end_loc - prev_end_loc
+
+            input_ids = torch.tensor(encodings[start_loc:end_loc], device=self.model.device).unsqueeze(0)
             target_ids = input_ids.clone()
-            target_ids[:-trg_len] = -100
-            input_ids = input_ids.unsqueeze(0)
-            # with open(f'output_file{begin_loc}.txt', 'w') as file:
-            #     output_info = f"input_ids: {str(input_ids)}, type: {(input_ids.dtype)}"
-            #     print(output_info)
-            #     file.write(output_info + "\n")
+            target_ids[:, :-target_length] = -1e-3
 
             with torch.no_grad():
-                outputs = self.model_(input_ids, labels=target_ids)
-                neg_log_likelihood = outputs.loss * trg_len
+                outputs = self.model(input_ids, labels=target_ids)
+                neg_log_likelihood = outputs.loss * target_length
 
-            nlls.append(neg_log_likelihood)
-
+            neg_log_likelihoods.append(neg_log_likelihood)
             prev_end_loc = end_loc
-            if end_loc == seq_len:
+
+            if end_loc == sequence_length:
                 break
 
-        ppl = torch.exp(torch.stack(nlls).sum() / end_loc)
-        return {'value': ppl.item()}
+        total_neg_log_likelihood = torch.stack(neg_log_likelihoods).sum()
+        perplexity = torch.exp(total_neg_log_likelihood / sequence_length)
+        return {'value': perplexity.item()}
