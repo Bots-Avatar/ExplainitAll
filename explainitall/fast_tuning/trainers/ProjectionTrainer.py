@@ -1,8 +1,30 @@
 import numpy as np
 import torch
-from transformers import TextDataset, DataCollatorForLanguageModeling
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, PreTrainedTokenizer
+from transformers import DataCollatorForLanguageModeling
+from torch.utils.data import Dataset
 
+
+class StringDataset(Dataset):
+    def __init__(self, tokenizer: PreTrainedTokenizer, texts: list, block_size=256):
+        block_size = block_size - (tokenizer.model_max_length - tokenizer.max_len_single_sentence)
+        self.examples = []
+
+        for text in texts:
+            if len(text)==0: 
+                continue
+            tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
+            if len(tokenized_text) >= block_size:
+                for i in range(0, len(tokenized_text) - block_size + 1, block_size):
+                    self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i:i + block_size]))
+            else:
+              self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text))
+    
+    def __len__(self):
+            return len(self.examples)
+
+    def __getitem__(self, i):
+        return torch.tensor(self.examples[i], dtype=torch.long)
 
 class GPTProjectionTrainer:
     def __init__(self, model, tokenizer):
@@ -24,10 +46,10 @@ class GPTProjectionTrainer:
         out_gpt_layer.bias.data.copy_(b_tensor)
         self.model.lm_head = out_gpt_layer
 
-    def load_dataset(self, file_path, block_size=256):
-        dataset = TextDataset(
+    def load_dataset(self, texts, block_size=256):
+        dataset = StringDataset(
             tokenizer=self.tokenizer,
-            file_path=file_path,
+            texts=texts,
             block_size=block_size,
         )
         return dataset
@@ -39,7 +61,7 @@ class GPTProjectionTrainer:
         )
         return data_collator
 
-    def train(self, train_file_path, bias_mask, variety=0.0, output_dir="new_gpt", last_k=10,
+    def train(self, train_texts, bias_mask, variety=0.0, output_dir="new_gpt", last_k=10,
               per_device_train_batch_size=2, num_train_epochs=3, save_steps=1000, device=None):
 
         self.set_variety(bias_mask, variety=variety)
@@ -55,7 +77,10 @@ class GPTProjectionTrainer:
         for param in params[-last_k:]:
             param.requires_grad = True
 
-        train_dataset = self.load_dataset(train_file_path)
+        train_dataset = self.load_dataset(train_texts)
+        if len(train_dataset) == 0:
+            raise ValueError("Dataset is empty. Ensure that the input texts are not empty and of sufficient length.")
+
         data_collator = self.create_data_collator()
 
         training_args = TrainingArguments(
