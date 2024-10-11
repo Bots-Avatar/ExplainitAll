@@ -1,8 +1,8 @@
 import pickle
 import re
-
+import pandas as pd
 import numpy as np
-
+from sklearn.neighbors import NearestNeighbors
 
 class RetriBotStruct:
     """Ретривел бот"""
@@ -193,15 +193,14 @@ def cos_dist(x, y):
     return -cos(x, y)
 
 
-class KnnBot():
+class KnnBot:
     """
     Поисковый бот на базе модели векторизации и метода ближайших соседей
     с установкой максимального радиуса для детекции аномалий.
     """
 
-    def __init__(self, knn, sbert, mean=None, std=None, vect_transformer=None, dim=None, n_neighbors=3, eps=1e-200):
+    def __init__(self, knn=None, sbert=None, mean=None, std=None, vect_transformer=None, dim=None, n_neighbors=3, eps=1e-200):
         self.knn = knn
-        self.knn.n_neighbors = n_neighbors
         self.model = sbert
         self.mean = np.zeros((dim,)) if mean is None else mean
         self.std = np.ones((dim,)) if std is None else std + eps
@@ -220,7 +219,7 @@ class KnnBot():
 
     def get_vect(self, q):
         """
-        Преобразование текста в вектор.
+        Преобразование текста в вектор и его нормализация.
         """
         vect_q = self.model.encode(q, convert_to_tensor=False)
         vect_q = self.vect_transformer.transform([vect_q])[0]
@@ -239,3 +238,50 @@ class KnnBot():
         """
         text_q = self.clean_string(q)
         return self.__get_answer_text(text_q)
+
+    def train(self, csv_path, embedder, knn_neighbors=5):
+        """
+        Метод для обучения бота на основе CSV с вопросами и ответами с расчетом среднего и стандартного отклонения.
+
+        :param csv_path: Путь к CSV файлу с вопросами и ответами.
+        :param embedder: Модель эмбеддинга для преобразования текста в векторы.
+        :param knn_neighbors: Количество соседей для метода KNN.
+        """
+        # Шаг 1: Загрузка данных из CSV
+        data = pd.read_csv(csv_path)
+        if 'question' not in data.columns or 'answer' not in data.columns:
+            raise ValueError("CSV файл должен содержать колонки 'question' и 'answer'")
+
+        questions = data['question'].tolist()
+        answers = data['answer'].tolist()
+
+        # Шаг 2: Преобразование вопросов в векторы
+        question_vectors = np.array([embedder.encode(q, convert_to_tensor=False) for q in questions])
+
+        # Шаг 3: Вычисление среднего и стандартного отклонения по векторам вопросов
+        self.mean = np.mean(question_vectors, axis=0)
+        self.std = np.std(question_vectors, axis=0)
+
+        # Чтобы избежать деления на ноль, добавляем небольшое значение eps
+        eps = 1e-10
+        self.std += eps
+
+        # Шаг 4: Нормализация векторов вопросов
+        normalized_vectors = (question_vectors - self.mean) / self.std
+
+        # Шаг 5: Инициализация и обучение KNN
+        self.knn = NearestNeighbors(n_neighbors=knn_neighbors, metric='cosine')
+        self.knn.fit(normalized_vectors)
+
+        # Сохранение ответов
+        self.answers = answers
+
+    def get_normalized_vector(self, question):
+        """
+        Получение нормализованного вектора вопроса на основе сохраненных среднего и std.
+        
+        :param question: Вопрос для преобразования.
+        :return: Нормализованный вектор.
+        """
+        vect_q = self.model.encode(question, convert_to_tensor=False)
+        return (vect_q - self.mean) / self.std
