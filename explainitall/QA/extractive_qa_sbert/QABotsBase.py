@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
+
+
 class RetriBotStruct:
     """Ретривел бот"""
 
@@ -224,20 +226,33 @@ class KnnBot:
         vect_q = self.model.encode(q, convert_to_tensor=False)
         vect_q = self.vect_transformer.transform([vect_q])[0]
         return (vect_q - self.mean) / self.std
-
-    def __get_answer_text(self, text_q):
+    
+    def __get_answer_text(self, text_q, n_neighbors=1):
         """
-        Получение ответа на основе векторизованного текста.
+        Получение ответов на основе векторизованного текста.
+        
+        :param text_q: Векторизованный запрос.
+        :param n_neighbors: Количество ближайших соседей для поиска.
+        :return: Список ответов.
         """
         vect = self.get_vect(text_q)
-        return self.knn.predict([vect])[0]
+        
+        # Получаем индексы ближайших соседей
+        distances, indices = self.knn.kneighbors([vect], n_neighbors=n_neighbors)
+        
+        # Возвращаем список ответов на основе индексов ближайших соседей
+        return list(set([self.answers[idx] for idx in indices[0]]))
 
-    def get_answer(self, q):
+    def get_answer(self, q, n_neighbors=1):
         """
         Получение ответа на входящий запрос.
+        
+        :param q: Вопрос.
+        :param n_neighbors: Количество ближайших соседей, которые нужно вернуть.
+        :return: Список ответов.
         """
         text_q = self.clean_string(q)
-        return self.__get_answer_text(text_q)
+        return self.__get_answer_text(text_q, n_neighbors)
 
     def train(self, csv_path, embedder, knn_neighbors=5):
         """
