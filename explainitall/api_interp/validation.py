@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from .agreement import RankAgreement, api_cluster_importance, rank_agreement
-from .explainer import ExplainerAPI, ExplainerAPIOutput
+from .explainer import ExplainerAPI, ExplainerAPIOutput, NoClusterWordsError
 from .logprob_scoring import ForcedLogprobScorer
 from .perturbations import ClusterMasker, Messages, normalize_messages
 from .scorers import SemanticScorer
@@ -183,13 +183,13 @@ class ValidationExperiment:
             on_error: str = 'raise') -> List[PromptValidation]:
         """
         dataset: пары (промпт, описание кластеров)
-        on_error: 'raise' — прервать на первой ошибке; 'skip' — пропустить промпт (например, без слов кластеров)
+        on_error: 'skip' — пропускать промпты без слов кластеров; 'raise' — прерывать на них. Прочие ошибки всегда прерывают
         """
         results = []
         for prompt, clusters_description in dataset:
             try:
                 results.append(self.run_one(prompt, clusters_description))
-            except ValueError:
+            except NoClusterWordsError:
                 if on_error != 'skip':
                     raise
         return results

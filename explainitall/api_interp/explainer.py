@@ -13,6 +13,10 @@ from .scorers import SemanticScorer
 
 BASELINE = 'baseline'
 
+
+class NoClusterWordsError(ValueError):
+    """В промпте нет ни одного слова из заданных кластеров: интерпретировать нечего"""
+
 SEMANTIC_COLUMNS = ['importance', 'distance', 'distance_std', 'significant', 'n_samples']
 LOGPROB_COLUMNS = ['logprob_drop', 'logprob_drop_total', 'logprob_tokens', 'logprob_truncated',
                    'logprob_calls', 'logprob_significant']
@@ -253,7 +257,7 @@ class ExplainerAPI:
         masker = self._masker(clusters_description)
         plan = self._plan(masker, prompt)
         if not plan.perturbed:
-            raise ValueError('В промпте не найдено ни одного слова из заданных кластеров')
+            raise NoClusterWordsError('В промпте не найдено ни одного слова из заданных кластеров')
 
         records = self._run(plan)
         logprob_analysis = self._logprob_analysis(plan, records) if self.logprobs else None

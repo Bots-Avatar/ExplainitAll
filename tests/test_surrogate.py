@@ -146,14 +146,14 @@ def tiny_model(family, tmp_path_factory):
         pytest.skip(f'Не удалось загрузить токенизатор {tokenizer_repo}: {e}')
 
     torch.manual_seed(0)
-    # inseq берёт bos_token_id из конфига модели; у Qwen BOS нет, и, как в настоящем конфиге, им служит <|endoftext|>
+    # Как в настоящих конфигах: у Qwen bos_token_id указывает на <|endoftext|>, а pad_token_id не задан
+    # (без pad_token_id inseq затирает заполнитель токенизатора — это должен исправлять ExplainerGPT2)
     bos_token_id = tokenizer.bos_token_id
     if bos_token_id is None:
         bos_token_id = tokenizer.convert_tokens_to_ids('<|endoftext|>')
     config = config_cls(vocab_size=len(tokenizer), hidden_size=16, intermediate_size=32, num_hidden_layers=2,
                         num_attention_heads=2, num_key_value_heads=2, max_position_embeddings=512,
-                        bos_token_id=bos_token_id, eos_token_id=tokenizer.eos_token_id,
-                        pad_token_id=tokenizer.pad_token_id)
+                        bos_token_id=bos_token_id, eos_token_id=tokenizer.eos_token_id, pad_token_id=None)
     model_dir = tmp_path_factory.mktemp(f'tiny_{family}')
     model_cls(config).save_pretrained(model_dir)
     tokenizer.save_pretrained(model_dir)

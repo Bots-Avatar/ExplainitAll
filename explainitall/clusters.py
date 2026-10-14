@@ -1,7 +1,8 @@
 import copy
-from typing import List, Callable, Dict, Union, Optional
+from typing import List, Callable, Dict, Literal, Union, Optional
 
 import gensim
+import numpy as np
 from gensim.models import KeyedVectors
 from pandas import DataFrame
 
@@ -179,11 +180,30 @@ class ClusterInterpreter:
 
 
 def aggregate_cluster_df(cluster_df: DataFrame,
-                         aggr_f: Union[('max', 'min', 'sum', 'mean', 'median', 'std', 'var', 'sem', 'skew')],
+                         aggr_f: Literal['max', 'min', 'sum', 'mean', 'median', 'std', 'var', 'sem', 'skew'] = 'mean',
                          drop_condition: str = 'unnamed',
                          cl_names_col: str = 'Tokens',
                          ) -> DataFrame:
-    cluster_df = cluster_df[~cluster_df[cl_names_col].str.contains(drop_condition)]
-    cluster_df = cluster_df.loc[:, ~cluster_df.columns.str.contains(drop_condition)]
-    aggregation_functions = {col: aggr_f for col in cluster_df.columns if col != cl_names_col}
-    return cluster_df.groupby(cl_names_col).agg(aggregation_functions).reset_index()
+    """
+    Матрица «кластер × кластер» из матрицы важности слов с метками кластеров.
+    Строки — кластеры слов (столбец cl_names_col), столбцы — кластеры сгенерированных слов;
+    значение — aggr_f по всем парам слов этих кластеров (пропуски не учитываются).
+    Несколько слов одного кластера дают одинаковые имена столбцов, поэтому столбцы агрегируются по имени.
+    Строки и столбцы с меткой drop_condition (слова вне кластеров) отбрасываются.
+    """
+    names = cluster_df[cl_names_col].to_numpy()
+    value_positions = [i for i, col in enumerate(cluster_df.columns) if col not in (cl_names_col, drop_condition)]
+    row_mask = names != drop_condition
+    if not value_positions or not row_mask.any():
+        return DataFrame(columns=[cl_names_col])
+
+    column_names = [cluster_df.columns[i] for i in value_positions]
+    values = cluster_df.iloc[row_mask.nonzero()[0], value_positions].to_numpy(dtype=float)
+    long = DataFrame({'row': np.repeat(names[row_mask], len(column_names)),
+                      'col': np.tile(column_names, int(row_mask.sum())),
+                      'value': values.ravel()})
+
+    aggregated = long.groupby(['row', 'col'])['value'].agg(aggr_f).unstack('col')
+    aggregated = aggregated.reindex(columns=list(dict.fromkeys(column_names)))
+    aggregated.columns.name = None
+    return aggregated.rename_axis(cl_names_col).reset_index()

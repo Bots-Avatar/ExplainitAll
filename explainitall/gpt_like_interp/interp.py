@@ -42,9 +42,22 @@ class ExplainerGPT2Output:
         viz.df_to_heatmap(self.cluster_imp_aggr_df, title="Карта важности слов группированная")
 
 
+def ensure_pad_token(gpt_model: AttributionModel):
+    """
+    inseq для decoder-only моделей без pad_token_id в конфиге ставит заполнителем BOS;
+    если BOS нет (например, у Qwen), токенизатор остается без заполнителя и атрибуция падает.
+    В этом случае заполнителем становится EOS.
+    """
+    tokenizer = getattr(gpt_model, 'tokenizer', None)
+    if tokenizer is not None and tokenizer.pad_token is None and tokenizer.eos_token is not None:
+        tokenizer.pad_token = tokenizer.eos_token
+        gpt_model.pad_token = tokenizer.eos_token
+
+
 class ExplainerGPT2:
     def __init__(self, gpt_model: AttributionModel,
                  nlp_model: gensim.models.keyedvectors.KeyedVectors):
+        ensure_pad_token(gpt_model)
         self.gpt_model = gpt_model
         self.nlp_model = nlp_model
         self._cluster_manager = ClusterManager(embeddings=self.nlp_model)

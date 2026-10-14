@@ -163,6 +163,8 @@ cython_debug/
 /examples/dataset
 /examples/database.sqlite
 *cache*
+# Модуль кеша ответов API: исходный код, а не кеш
+!explainitall/api_interp/cache.py
 /examples/trained_model
 /examples/s
 /examples/new_gpt

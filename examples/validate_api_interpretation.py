@@ -73,8 +73,8 @@ def build_backend(args):
         twin_model = None
         if args.twin == 'auto':  # двойник — та же локальная модель, загружать веса второй раз не нужно
             from inseq import load_model
-            twin_model = load_model(client.model, attribution_method='integrated_gradients',
-                                    tokenizer=client.tokenizer)
+            # отдельный токенизатор: inseq меняет его настройки (дополнение слева), генерацию это не должно задевать
+            twin_model = load_model(client.model, attribution_method='integrated_gradients', tokenizer=args.model)
         return client, None, twin_model, explicit_twin
 
     from explainitall.api_interp.cache import ResponseCache
@@ -93,7 +93,7 @@ def build_backend(args):
 def main(argv=None):
     args = parse_args(argv)
     from sentence_transformers import SentenceTransformer
-    from explainitall.api_interp.explainer import ExplainerAPI
+    from explainitall.api_interp.explainer import ExplainerAPI, NoClusterWordsError
     from explainitall.api_interp.surrogate import SurrogateExplainer
     from explainitall.api_interp.validation import ValidationExperiment, summarize
 
@@ -118,7 +118,7 @@ def main(argv=None):
     for i, prompt in enumerate(PROMPTS, 1):
         try:
             result = experiment.run_one(prompt, CLUSTERS)
-        except ValueError as e:
+        except NoClusterWordsError as e:
             print(f'[{i}] пропущен: {e}')
             continue
         results.append(result)

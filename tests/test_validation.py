@@ -214,3 +214,14 @@ def test_local_client_without_logprobs(tiny_local_client):
 
     assert result.logprobs is None
     assert result.finish_reason in ('stop', 'length')
+
+
+def test_run_skip_does_not_hide_other_errors(nlp_model):
+    class BrokenTwin:
+        def interpret(self, *args, **kwargs):
+            raise ValueError('Asking to pad but the tokenizer does not have a padding token')
+
+    experiment = ValidationExperiment(make_explainer(nlp_model, FakeTokenLM()), twin=BrokenTwin(), n_random=1)
+
+    with pytest.raises(ValueError, match='padding token'):
+        experiment.run([(PROMPT, CLUSTERS)], on_error='skip')
