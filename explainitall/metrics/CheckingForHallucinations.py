@@ -9,20 +9,31 @@ def sim_cosine(embedding_1, embedding_2):
     return s.detach().numpy()
 
 def sim_euclidean(embedding_1, embedding_2):
-    s = np.linalg.norm(embedding_1 - embedding_2, axis=1)
-    return s
+    """Матрица схожести 1 / (1 + d) по евклидову расстоянию, значения в (0, 1]"""
+    d = np.linalg.norm(embedding_1[:, None, :] - embedding_2[None, :, :], axis=-1)
+    return 1 / (1 + d)
 
 def sim_manhattan(embedding_1, embedding_2):
-    s = np.sum(np.abs(embedding_1 - embedding_2), axis=1)
-    return s
+    """Матрица схожести 1 / (1 + d) по манхэттенскому расстоянию, значения в (0, 1]"""
+    d = np.sum(np.abs(embedding_1[:, None, :] - embedding_2[None, :, :]), axis=-1)
+    return 1 / (1 + d)
 
 def sim_cross_encoder(encoder, sentences1, sentences2):
-    scores = encoder.predict([sentences1, sentences2])
-    return scores
+    """Матрица оценок кросс-энкодера для всех пар (sentences1[i], sentences2[j])"""
+    pairs = [(s1, s2) for s1 in sentences1 for s2 in sentences2]
+    scores = np.asarray(encoder.predict(pairs))
+    return scores.reshape(len(sentences1), len(sentences2))
+
+def ensure_punkt():
+    """Скачивает токенизатор предложений nltk только если его ещё нет"""
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        nltk.download('punkt')
 
 class RAGHallucinationsChecker:
     def __init__(self, sbert_model: SentenceTransformer, cross_encoder=None, language = 'russian'):
-        nltk.download('punkt')
+        ensure_punkt()
         self.sbert_model = sbert_model
         self.cross_encoder = cross_encoder
         self.language = language
@@ -79,14 +90,17 @@ class RAGHallucinationsChecker:
         return res
 
     def get_conf(self, doc_snp, ans, prob=0.6, sim_metric='cosine'):
-        answer_a = self.get_support_seq(ans=ans, doc_snp=doc_snp, prob=prob, sim_metric=sim_metric)
         len_all = len(ans)
-        len_with_out_h = len(answer_a) - 1  # Учитываем пробелы
+        if len_all == 0:
+            return 1.0
+
+        answer_a = self.get_support_seq(ans=ans, doc_snp=doc_snp, prob=prob, sim_metric=sim_metric)
+        len_with_out_h = max(len(answer_a) - 1, 0)  # Учитываем пробелы между подтверждёнными предложениями
 
         for s in answer_a:
             len_with_out_h += len(s['answer'])
 
-        return len_with_out_h / len_all
+        return min(len_with_out_h / len_all, 1.0)
 
     def get_hallucinations_prob(self, doc_snp, ans, prob=0.6, sim_metric='cosine'):
         return 1 - self.get_conf(doc_snp, ans, prob, sim_metric)

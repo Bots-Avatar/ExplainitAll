@@ -5,7 +5,7 @@ inseq==0.5.0
 matplotlib==3.8.4
 nltk==3.8.1
 pandas==2.2.1
-pymorphy2==0.9.1
+pymorphy3>=2.0.2
 scikit-learn==1.4.1.post1
 seaborn==0.13.2
 sentence_transformers==2.6.1
@@ -16,3 +16,7 @@ transformers>=4.39
 uvicorn==0.29
 scipy==1.12.0
 numpy==1.26.4
+fastapi
+requests
+tqdm
+Pillow

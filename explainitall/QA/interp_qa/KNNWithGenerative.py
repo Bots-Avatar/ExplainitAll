@@ -1,12 +1,9 @@
 import re
 
-import nltk
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 from explainitall.QA.extractive_qa_sbert.QABotsBase import SimpleTransformer
-
-nltk.download('punkt')
 
 
 class FredStruct:

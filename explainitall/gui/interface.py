@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 import re
@@ -6,7 +5,6 @@ import tempfile
 
 import gensim
 import gradio as gr
-import pandas as pd
 from inseq import load_model
 from sentence_transformers import SentenceTransformer
 from sklearn.neighbors import KNeighborsClassifier
@@ -16,6 +14,7 @@ from explainitall.QA.extractive_qa_sbert.SVDBert import SVDBertModel
 from explainitall.QA.interp_qa.KNNWithGenerative import FredStruct, PromptBot
 from explainitall.gpt_like_interp import interp
 from explainitall.gpt_like_interp.downloader import DownloadManager
+from explainitall.gui.clusters_table import make_clusters_from_dataframe, make_dataframe_from_clusters
 from explainitall.gui.df_to_heatmap_plot import df_to_heatmap_plot
 
 
@@ -30,27 +29,6 @@ def set_verbosity_error():
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
     logger = logging.getLogger('torch')
     logger.setLevel(logging.ERROR)
-
-
-def make_clusters_from_dataframe(df):
-    clusters = []
-    for row in df.itertuples():
-        name = getattr(row, 'name')
-        centroid = getattr(row, 'centroid')
-        top_k = getattr(row, 'top_k')
-        if name is None or name == "":
-            continue
-        d = {'name': name, 'centroid': eval(centroid), 'top_k': top_k}
-        clusters.append(d)
-    return clusters
-
-
-def make_dataframe_from_clusters(clusters):
-    clusters = copy.deepcopy(clusters)
-    for c in clusters:
-        c['centroid'] = "['" + "', '".join(c['centroid']) + "']"
-    res = pd.DataFrame(clusters)
-    return res
 
 
 def clean_string(text):
@@ -286,8 +264,8 @@ class DemoInterface:
 
     # FUNCTIONALITY:
 
-    def launch(self):
-        self.demo_.launch(share=True, debug=False, server_name="127.0.0.1", inbrowser=True)
+    def launch(self, share=False):
+        self.demo_.launch(share=share, debug=False, server_name="127.0.0.1", inbrowser=True)
 
     def show_results(self):
         self.explainer_ = interp.ExplainerGPT2(gpt_model=self.nn_model_, nlp_model=self.nlp_model_)

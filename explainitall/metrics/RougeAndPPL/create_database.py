@@ -1,9 +1,6 @@
 from sqlalchemy import create_engine, Table, Column, Float, Integer, String, MetaData
 
 
-ENGINE = create_engine('sqlite:///database.sqlite', echo=True)
-
-
 metadata = MetaData()
 
 
@@ -19,4 +16,8 @@ data_table = Table('data', metadata,
                    Column('R-L', Float))
 
 
-metadata.create_all(ENGINE)
+def get_engine(db_path: str = 'database.sqlite', echo: bool = False):
+    """Подключение к базе истории метрик; таблица создаётся при первом вызове, а не при импорте модуля"""
+    engine = create_engine(f'sqlite:///{db_path}', echo=echo)
+    metadata.create_all(engine)
+    return engine

@@ -1,5 +1,5 @@
 import copy
-from typing import List, Callable, Dict, Union
+from typing import List, Callable, Dict, Union, Optional
 
 import gensim
 from gensim.models import KeyedVectors
@@ -24,17 +24,22 @@ class ClusterBuilder:
     def __init__(self, name: str, seed_words: list,
                  embeddings: KeyedVectors,
                  word_processor,
-                 num_similar_words: int = 200):
+                 num_similar_words: int = 200,
+                 pos_tags: Union[None, str, List[str]] = None):
         """
         name: Имя кластера
         seed_words: Начальный список слов
         embeddings: векторные представления слов
         num_similar_words: Количество наиболее похожих слов для поиска
+        pos_tags: Части речи (UPOS) похожих слов, попадающих в кластер:
+            None — те же, что у начальных слов; 'all' — любые; список, например ['NOUN', 'VERB'] — заданные.
+            Начальные слова попадают в кластер при любой части речи.
         """
         self.name = name
         self.embeddings = embeddings
         self.num_similar_words = num_similar_words
         self.word_processor = word_processor
+        self.pos_tags = pos_tags
 
         self.seed_words = seed_words
 
@@ -52,14 +57,24 @@ class ClusterBuilder:
             matching_func=matching_func
         )
 
+    @staticmethod
+    def split_pos_tag(word_tagged: str):
+        """'кошка_NOUN' -> ('кошка', 'NOUN')"""
+        word, _, pos = word_tagged.rpartition("_")
+        return word, pos
+
     def get_embeddable_word_from_most_similar(self, value) -> str:
         word_and_postfix, likelihood = value
-        word, postfix = word_and_postfix.split("_")
+        word, _ = self.split_pos_tag(word_and_postfix)
         return self.word_processor.get_embeddable_word_or_none(word)
 
-    def filter_and_clean_words_postfix(self, word_list: list, postfix: str = "_NOUN") -> list:
-        filtered_w = [w for w in word_list if w and w.endswith(postfix)]
-        return [w[:-len(postfix)] for w in filtered_w]
+    def get_allowed_pos_tags(self) -> Optional[set]:
+        """Допустимые части речи похожих слов; None — без ограничений"""
+        if self.pos_tags is None:
+            return {self.split_pos_tag(w)[1] for w in self.embeddable_seed_words}
+        if isinstance(self.pos_tags, str):
+            return None if self.pos_tags.lower() == 'all' else {self.pos_tags}
+        return set(self.pos_tags)
 
     def find_similar_words(self) -> list:
         if not self.embeddable_seed_words:
@@ -73,13 +88,15 @@ class ClusterBuilder:
         except KeyError as e:
             raise Exception("embeddable_seed_words должны быть вида ['cat_NOUN','run_VERB']") from e
 
-        extracted_words = [
-            self.get_embeddable_word_from_most_similar(result) for result in similar_words
-        ]
-        extracted_words = self.embeddable_seed_words + extracted_words
-        extracted_words = self.filter_and_clean_words_postfix(extracted_words)
+        neighbours = [self.get_embeddable_word_from_most_similar(result) for result in similar_words]
+        neighbours = [w for w in neighbours if w]
 
-        return extracted_words
+        allowed_pos_tags = self.get_allowed_pos_tags()
+        if allowed_pos_tags is not None:
+            neighbours = [w for w in neighbours if self.split_pos_tag(w)[1] in allowed_pos_tags]
+
+        words = [self.split_pos_tag(w)[0] for w in self.embeddable_seed_words + neighbours]
+        return list(dict.fromkeys(words))
 
 
 class ClusterManager:
@@ -116,7 +133,8 @@ class ClusterManager:
                 seed_words=descr['centroid'],
                 embeddings=self.embeddings,
                 num_similar_words=descr['top_k'],
-                word_processor=self.word_processor
+                word_processor=self.word_processor,
+                pos_tags=descr.get('pos')
             ).build(matching_func=self._is_same_normalized_word))
         return clusters
 

@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import List
+from typing import List, Optional, Union
 
 import gensim
 import numpy as np
@@ -32,6 +32,8 @@ class ClusterItem(BaseModel):
     name: constr(min_length=1)
     centroid: List[str]
     top_k: int
+    # Части речи похожих слов: None — как у centroid, 'all' — любые, список UPOS-тегов — заданные
+    pos: Optional[Union[str, List[str]]] = None
 
 
 class EvaluationItem(BaseModel):
@@ -88,7 +90,8 @@ class ApiServerInit:
         self.clusters_r = [{
             "name": cluster.name,
             "centroid": cluster.centroid,
-            "top_k": cluster.top_k
+            "top_k": cluster.top_k,
+            "pos": cluster.pos
         } for cluster in clusters]
         self.prompt = prompt
         self.generated_text = generated_text

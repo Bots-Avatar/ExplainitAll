@@ -173,6 +173,8 @@ class Detokenizer:
     def group_text(self):
         """
         Группирует токены в слова.
+        Каждому токену соответствует ровно один элемент результата,
+        поэтому суммарная длина групп всегда равна числу токенов.
         Возвращает: список группированных слов
         """
         text = self.clean_text(self.text)
@@ -181,16 +183,22 @@ class Detokenizer:
         result = []
         for txt in pairs:
             start_index = text.lower().find(txt.lower())
-            if start_index != -1:
-                end_index = start_index + len(txt)
-                temp.append(text[start_index:end_index])
-                text = text[end_index:]
-                if not text or text[0] == " ":
-                    result.append(temp)
-                    temp = []
-                elif text[0] == "-" and txt != "-":
-                    temp.append(('-', 0))
-                    text = text[1:]
+            if start_index == -1:
+                # Токен не найден в тексте: сохраняем его позицию, чтобы не сбить выравнивание с атрибуциями
+                temp.append('')
+                continue
+            end_index = start_index + len(txt)
+            temp.append(text[start_index:end_index])
+            text = text[end_index:]
+            if not text or text[0] == " ":
+                result.append(temp)
+                temp = []
+            elif text[0] == "-" and txt != "-":
+                # Дефис внутри слова приклеиваем к текущему токену, а не добавляем отдельным элементом
+                temp[-1] += '-'
+                text = text[1:]
+        if temp:
+            result.append(temp)
         return result
 
 
@@ -210,6 +218,12 @@ def group_by(attr: AttrObj, gmm_norm=False) -> AttrObj:
     tokens_generated_grouped = Detokenizer(attr.phrase_generated, attr.tokens_generated).group_text()
     tokens_input_generated_mask = calculate_mask(tokens_input_grouped + tokens_generated_grouped)
     tokens_generated_mask = calculate_mask(tokens_generated_grouped)
+
+    rows_count = tokens_input_generated_mask[-1][1] if tokens_input_generated_mask else 0
+    cols_count = tokens_generated_mask[-1][1] if tokens_generated_mask else 0
+    if (rows_count, cols_count) != attr.array.shape:
+        raise ValueError(f"Группировка токенов в слова не совпадает с матрицей атрибуций: "
+                         f"маска {(rows_count, cols_count)}, матрица {attr.array.shape}")
 
     squashed_array = squash_arr(attr.array,
                                 squash_col_mask=tokens_generated_mask,

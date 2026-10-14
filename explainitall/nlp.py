@@ -1,13 +1,29 @@
 from functools import lru_cache
 
 import gensim
-import pymorphy2
+import pymorphy3
+
+# Теги частей речи pymorphy -> теги UPOS, которыми размечены модели RusVectores.
+# pymorphy приводит причастия и деепричастия к инфинитиву, а сравнительную степень к прилагательному,
+# поэтому они отображаются в VERB и ADJ соответственно.
+PYMORPHY_TO_UPOS = {
+    'NOUN': 'NOUN',
+    'ADJF': 'ADJ', 'ADJS': 'ADJ', 'COMP': 'ADJ',
+    'VERB': 'VERB', 'INFN': 'VERB', 'PRTF': 'VERB', 'PRTS': 'VERB', 'GRND': 'VERB',
+    'NUMR': 'NUM',
+    'ADVB': 'ADV', 'PRED': 'ADV',
+    'NPRO': 'PRON',
+    'PREP': 'ADP',
+    'CONJ': 'CCONJ',
+    'PRCL': 'PART',
+    'INTJ': 'INTJ',
+}
 
 
 class WordProcessor:
 
     def __init__(self, gensim_nlp_embeddings: gensim.models.keyedvectors.KeyedVectors):
-        self._morph = pymorphy2.MorphAnalyzer()
+        self._morph = pymorphy3.MorphAnalyzer()
         self.gensim_nlp_embeddings = gensim_nlp_embeddings
 
     @lru_cache(maxsize=None)
@@ -40,22 +56,25 @@ class WordProcessor:
 
     @lru_cache(maxsize=None)
     def get_grammeme_or_none(self, word: str):
+        """Часть речи слова в нотации UPOS (NOUN, VERB, ADJ, ...)"""
         clean_word = self.get_clean_word(word)
         if not clean_word:
             return None
         word_morph = self.get_morph_or_none(clean_word)
         if not word_morph:
             return None
-        tag = word_morph.tag.POS
-        tag = 'VERB' if word_morph and tag == 'INFN' else tag
-        return tag
+        return PYMORPHY_TO_UPOS.get(word_morph.tag.POS)
 
     def get_embeddable_word_or_none(self, word: str):
         normal_form = self.get_normal_form_or_none(word)
         grammeme = self.get_grammeme_or_none(word)
         if not normal_form or not grammeme:
             return None
-        word_tagged = f'{normal_form}_{grammeme}'
-        if word_tagged not in self.gensim_nlp_embeddings:
-            return None
-        return word_tagged
+        candidates = [f'{normal_form}_{grammeme}']
+        if grammeme == 'NOUN':
+            # Имена собственные в моделях RusVectores размечены как PROPN
+            candidates.append(f'{normal_form}_PROPN')
+        for word_tagged in candidates:
+            if word_tagged in self.gensim_nlp_embeddings:
+                return word_tagged
+        return None

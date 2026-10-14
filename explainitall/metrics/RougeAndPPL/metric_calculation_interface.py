@@ -4,7 +4,7 @@ from transformers import GPT2LMHeadModel, GPT2TokenizerFast, AutoTokenizer, Auto
 
 from explainitall.metrics.RougeAndPPL.Metrics import Metric_ppl, MetricRougeL, MetricRougeN
 from explainitall.metrics.RougeAndPPL.Metrics_calculator import Metrics_calculator
-from explainitall.metrics.RougeAndPPL.create_database import data_table, ENGINE
+from explainitall.metrics.RougeAndPPL.create_database import data_table, get_engine
 from explainitall.metrics.RougeAndPPL.helpers import (
     get_max_dataset_version, generate_candidates, calculate_average_metric_values,
     insert_new_record, get_records_from_database, make_dataframe_from_history_records)
@@ -31,8 +31,8 @@ class MetricCalculationInterface:
 
     conn_ = None
 
-    def __init__(self):
-        self.conn_ = ENGINE.connect()
+    def __init__(self, db_path='database.sqlite'):
+        self.conn_ = get_engine(db_path).connect()
 
         self.demo_ = gr.Blocks()
 
@@ -105,8 +105,8 @@ class MetricCalculationInterface:
             self.dataset_checkbox_ = dataset_checkbox
             self.metrics_checkbox_ = metrics_checkbox
 
-    def launch(self):
-        self.demo_.launch(share=True, debug=False, server_name="127.0.0.1", inbrowser=True)
+    def launch(self, share=False):
+        self.demo_.launch(share=share, debug=False, server_name="127.0.0.1", inbrowser=True)
 
     def load_model_(self, model_name_or_path):
         if not model_name_or_path:

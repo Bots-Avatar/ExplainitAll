@@ -54,6 +54,6 @@ def rouge_N(reference: List[int], candidate: List[int], n: int) -> Dict[str, flo
 
     precision = intersection / candidate_length
     recall = intersection / reference_length
-    f1 = 2*precision * recall / (precision + recall)
+    f1 = 2 * precision * recall / (precision + recall) if intersection > 0 else 0.0
 
     return {'precision': precision, 'recall': recall, 'f1': f1}

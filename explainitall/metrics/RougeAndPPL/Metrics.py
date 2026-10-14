@@ -95,6 +95,7 @@ class Metric_ppl(Metric):
         sequence_length = len(encodings)
 
         neg_log_likelihoods = []
+        predicted_tokens = 0
         prev_end_loc = 0
 
         for start_loc in range(0, sequence_length, self.stride):
@@ -103,18 +104,25 @@ class Metric_ppl(Metric):
 
             input_ids = torch.tensor(encodings[start_loc:end_loc], device=self.model.device).unsqueeze(0)
             target_ids = input_ids.clone()
-            target_ids[:, :-target_length] = -1e-3
+            # Токены контекста, уже учтённые в предыдущем окне, исключаются из loss (ignore_index = -100)
+            target_ids[:, :-target_length] = -100
 
-            with torch.no_grad():
-                outputs = self.model(input_ids, labels=target_ids)
-                neg_log_likelihood = outputs.loss * target_length
+            # Модель сдвигает метки на один токен, поэтому первая позиция окна не предсказывается
+            window_predicted = int((target_ids[:, 1:] != -100).sum())
+            if window_predicted > 0:
+                with torch.no_grad():
+                    outputs = self.model(input_ids, labels=target_ids)
+                neg_log_likelihoods.append(outputs.loss * window_predicted)
+                predicted_tokens += window_predicted
 
-            neg_log_likelihoods.append(neg_log_likelihood)
             prev_end_loc = end_loc
 
             if end_loc == sequence_length:
                 break
 
+        if predicted_tokens == 0:
+            return {'value': float('nan')}
+
         total_neg_log_likelihood = torch.stack(neg_log_likelihoods).sum()
-        perplexity = torch.exp(total_neg_log_likelihood / sequence_length)
+        perplexity = torch.exp(total_neg_log_likelihood / predicted_tokens)
         return {'value': perplexity.item()}
