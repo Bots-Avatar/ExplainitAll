@@ -84,7 +84,7 @@ class ExplainerGPT2:
             n_steps=steps, generation_args=generation_args,
             show_progress=True, pretty_progress=False, internal_batch_size=batch_size
         )
-        self.attributions = inseq_helpers.get_first_attribute(out)
+        self.attributions = inseq_helpers.get_first_attribute(out, getattr(self.gpt_model, 'tokenizer', None))
 
     def _run_pipeline(self, cluster_desc, aggr_f):
         group_attr = inseq_helpers.group_by(self.attributions)

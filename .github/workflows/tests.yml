@@ -33,10 +33,10 @@ jobs:
             setup.py
 
       - name: Install CPU-only torch
-        # Сборка без CUDA в разы меньше и достаточна для тестов
+        # inseq 0.5.0 требует ровно torch==2.0.0; сборка без CUDA в разы меньше и достаточна для тестов
         run: |
           python -m pip install --upgrade pip
-          pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install torch==2.0.0 --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install package
         run: pip install -e ".[dev]"

@@ -40,18 +40,22 @@ def sum_normalize_attributions(
     return attributions
 
 
-def fix_ig_tokens(feature_attr: FeatureAttributionOutput):
-    from transformers import GPT2Tokenizer
-
+def fix_ig_tokens(feature_attr: FeatureAttributionOutput, tokenizer=None):
+    """
+    Переводит служебную запись токенов ('Ġкошка', '▁кошка') в текст.
+    tokenizer: токенизатор модели; по умолчанию загружается по имени модели из feature_attr
+    """
     feature_attr_conv = deepcopy(feature_attr)
-    dt = GPT2Tokenizer.from_pretrained(feature_attr_conv.info['model_name'])
+    if tokenizer is None:
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(feature_attr_conv.info['model_name'])
 
     for attr in feature_attr_conv.sequence_attributions:
         for token_holder in (attr.source, attr.target):
             for s in token_holder:
                 try:
-                    s.token = dt.convert_tokens_to_string(s.token)
-                except KeyError:
+                    s.token = tokenizer.convert_tokens_to_string([s.token])
+                except (KeyError, TypeError, ValueError):
                     pass
     return feature_attr_conv
 
@@ -101,8 +105,8 @@ class AttrObj:
                 f"{self.array.shape=})")
 
 
-def get_first_attribute(feature_attr: FeatureAttributionOutput):
-    fixed_attr = fix_ig_tokens(feature_attr)
+def get_first_attribute(feature_attr: FeatureAttributionOutput, tokenizer=None):
+    fixed_attr = fix_ig_tokens(feature_attr, tokenizer)
     phrase_input, phrase_generated_full = get_ig_phrases(fixed_attr)[0]
     phrase_generated = phrase_generated_full[len(phrase_input):]
     tokens_input, tokens_generated_full = get_ig_tokens(fixed_attr)[0]
